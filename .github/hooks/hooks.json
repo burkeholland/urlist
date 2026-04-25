@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "type": "command",
+        "bash": "./scripts/lint.sh",
+        "cwd": ".github/hooks"
+      }
+    ]
+  }
+}
