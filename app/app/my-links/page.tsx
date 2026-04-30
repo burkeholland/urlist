@@ -5,12 +5,16 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { NavHeader } from '@/components/nav-header';
 import { useAuth } from '@/hooks/use-auth';
-import type { ListWithLinks } from '@/lib/types';
+import type { ListWithLinks, ListAnalyticsSummary } from '@/lib/types';
+
+type ListWithStats = ListWithLinks & {
+  stats?: ListAnalyticsSummary;
+};
 
 export default function MyLinksPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
-  const [lists, setLists] = useState<ListWithLinks[]>([]);
+  const [lists, setLists] = useState<ListWithStats[]>([]);
   const [fetching, setFetching] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -26,7 +30,7 @@ export default function MyLinksPage() {
     async function fetchLists() {
       if (!user) return;
       try {
-        const res = await fetch('/api/lists', { credentials: 'include' });
+        const res = await fetch('/api/lists?includeStats=true', { credentials: 'include' });
         if (!res.ok) {
           setLists([]);
           return;
@@ -139,8 +143,21 @@ export default function MyLinksPage() {
                 <div className="my-slug">
                   <Link href={`/${list.slug}`}>/{list.slug}</Link>
                 </div>
+                <div className="my-stats">
+                  <span className="stat-badge" title="Views">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    {list.stats?.totalViews ?? 0}
+                  </span>
+                  <span className="stat-badge" title="Clicks">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5"/></svg>
+                    {list.stats?.totalClicks ?? 0}
+                  </span>
+                </div>
                 <span className="count-badge">{list.links.length}</span>
                 <div className="my-actions">
+                  <Link href={`/app/analytics/${list.listId}`} className="analytics-link" title="Analytics">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+                  </Link>
                   <Link href={`/app/compose/${list.listId}`}>Edit</Link>
                   <button
                     onClick={() => handleDelete(list.listId)}
@@ -180,6 +197,39 @@ export default function MyLinksPage() {
         }
         .my-row:first-child {
           border-top: 1px solid var(--border);
+        }
+        .my-stats {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .stat-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          font-family: var(--font-mono);
+          font-size: 12px;
+          color: var(--text-muted);
+          background: var(--bg-secondary);
+          padding: 2px 6px;
+          border-radius: 4px;
+        }
+        .count-badge {
+          font-family: var(--font-mono);
+          font-size: 12px;
+          color: var(--text-muted);
+          background: var(--bg-secondary);
+          padding: 2px 8px;
+          border-radius: 10px;
+        }
+        .analytics-link {
+          display: inline-flex;
+          align-items: center;
+          color: var(--text-muted);
+          transition: color 0.15s;
+        }
+        .analytics-link:hover {
+          color: var(--accent);
         }
         .my-slug {
           font-family: var(--font-mono);

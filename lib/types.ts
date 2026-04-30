@@ -116,3 +116,96 @@ export interface DeleteResponse {
 }
 
 export type SlugValidationStatus = 'idle' | 'checking' | 'valid' | 'invalid' | 'taken';
+
+// ── Analytics types ──
+
+export type AnalyticsEventType = 'pageView' | 'linkClick';
+
+export interface AnalyticsEvent {
+  id: string;
+  slug: string;
+  type: AnalyticsEventType;
+  visitorId: string;
+  referrer: string | null;
+  timestamp: number;
+  // pageView fields
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
+  country?: string | null;
+  // linkClick fields
+  linkId?: string;
+}
+
+export interface DailyViews {
+  date: string; // YYYY-MM-DD
+  views: number;
+  uniqueVisitors: number;
+}
+
+export interface ReferrerStats {
+  referrer: string;
+  count: number;
+}
+
+export interface GeoStats {
+  country: string;
+  count: number;
+}
+
+export interface LinkClickStats {
+  linkId: string;
+  url: string;
+  title: string | null;
+  clicks: number;
+}
+
+export interface ListAnalytics {
+  listId: string;
+  totalViews: number;
+  uniqueVisitors: number;
+  totalClicks: number;
+  clickThroughRate: number;
+  viewsOverTime: DailyViews[];
+  topReferrers: ReferrerStats[];
+  geoBreakdown: GeoStats[];
+  linkClicks: LinkClickStats[];
+}
+
+export interface ListAnalyticsSummary {
+  totalViews: number;
+  totalClicks: number;
+}
+
+export interface ListPerformance {
+  listId: string;
+  slug: string;
+  description: string;
+  totalViews: number;
+  totalClicks: number;
+  uniqueVisitors: number;
+}
+
+export interface GlobalAnalytics {
+  totalViews: number;
+  totalClicks: number;
+  totalUniqueVisitors: number;
+  viewsOverTime: DailyViews[];
+  topLists: ListPerformance[];
+}
+
+export interface TrackPageViewPayload {
+  type: 'pageView';
+  referrer?: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+}
+
+export interface TrackLinkClickPayload {
+  type: 'linkClick';
+  linkId: string;
+  referrer?: string;
+}
+
+export type TrackEventPayload = TrackPageViewPayload | TrackLinkClickPayload;

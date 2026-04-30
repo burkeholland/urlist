@@ -8,6 +8,7 @@ import {
 } from '@/lib/slug';
 import { normalizeUrl, isValidHttpUrl } from '@/lib/url';
 import { reserveSlug, cleanupFailedPublish, createList, getUserListIds, getListsWithLinks } from '@/lib/rtdb';
+import { getListAnalyticsSummary } from '@/lib/analytics';
 import { checkRateLimit, getClientIp, RATE_LIMITS } from '@/lib/rate-limiter';
 import { log } from '@/lib/logger';
 import {
@@ -29,6 +30,22 @@ export async function GET(request: NextRequest) {
 
   const listIds = await getUserListIds(authResult.uid);
   const lists = await getListsWithLinks(listIds);
+
+  const { searchParams } = new URL(request.url);
+  const includeStats = searchParams.get('includeStats') === 'true';
+
+  if (includeStats) {
+    const listsWithStats = await Promise.all(
+      lists.map(async (list) => {
+        const stats = await getListAnalyticsSummary(list.slug).catch(() => ({
+          totalViews: 0,
+          totalClicks: 0,
+        }));
+        return { ...list, stats };
+      }),
+    );
+    return NextResponse.json(listsWithStats);
+  }
 
   return NextResponse.json(lists);
 }

@@ -1,14 +1,25 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { LinkCard } from '@/components/link-card';
 import { NavHeader } from '@/components/nav-header';
-import type { ListWithLinks } from '@/lib/types';
+import type { ListWithLinks, TrackEventPayload } from '@/lib/types';
 
 interface PublicListClientProps {
   list: ListWithLinks;
   slug: string;
   justPublished: boolean;
+}
+
+function trackEvent(listId: string, payload: TrackEventPayload) {
+  fetch(`/api/lists/${listId}/analytics/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    keepalive: true,
+  }).catch(() => {
+    // Analytics should never break the user experience
+  });
 }
 
 export function PublicListClient({ list, slug, justPublished }: PublicListClientProps) {
@@ -32,6 +43,18 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
     }
   }, [justPublished, publicUrl]);
 
+  // Track page view on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    trackEvent(list.listId, {
+      type: 'pageView',
+      referrer: document.referrer || undefined,
+      utmSource: params.get('utm_source') || undefined,
+      utmMedium: params.get('utm_medium') || undefined,
+      utmCampaign: params.get('utm_campaign') || undefined,
+    });
+  }, [list.listId]);
+
   // Auto-dismiss banner after 30 seconds
   useEffect(() => {
     if (showBanner) {
@@ -49,6 +72,17 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
       // fallback
     }
   };
+
+  const handleLinkClick = useCallback(
+    (linkId: string) => {
+      trackEvent(list.listId, {
+        type: 'linkClick',
+        linkId,
+        referrer: document.referrer || undefined,
+      });
+    },
+    [list.listId],
+  );
 
   return (
     <div>
@@ -79,7 +113,9 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
 
         <div className="pub-links">
           {list.links.map((link) => (
-            <LinkCard key={link.id} link={link} isPublicView />
+            <div key={link.id} onClick={() => handleLinkClick(link.id)}>
+              <LinkCard link={link} isPublicView />
+            </div>
           ))}
         </div>
       </main>
