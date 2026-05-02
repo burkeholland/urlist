@@ -32,10 +32,13 @@ const options: { value: 'light' | 'dark' | 'system'; label: string }[] = [
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Resolve which icon to show for "system"
-  const resolvedIcon = theme === 'system' ? getSystemTheme() : theme;
+  useEffect(() => { setMounted(true); }, []);
+
+  // Resolve which icon to show for "system" — only after mount to avoid hydration mismatch
+  const resolvedIcon = mounted ? (theme === 'system' ? getSystemTheme() : theme) : 'system';
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {

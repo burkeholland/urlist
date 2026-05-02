@@ -1,18 +1,28 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { NavHeader } from '@/components/nav-header';
+import { normalizeUrl } from '@/lib/url';
 
 export default function HomePage() {
   const router = useRouter();
+  const [url, setUrl] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [shakeVariant, setShakeVariant] = useState<'a' | 'b'>('a');
 
   const handleUrlSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const url = formData.get('url') as string;
-    if (url?.trim()) {
-      router.push(`/app/compose?url=${encodeURIComponent(url.trim())}`);
+    setError(null);
+
+    const result = normalizeUrl(url);
+    if (!result.valid) {
+      setShakeVariant((variant) => (variant === 'a' ? 'b' : 'a'));
+      setError(result.error || 'Invalid URL.');
+      return;
     }
+
+    router.push(`/app/compose?url=${encodeURIComponent(result.url)}`);
   };
 
   return (
@@ -83,7 +93,7 @@ export default function HomePage() {
           flex-shrink: 0;
           border: 1px solid var(--border);
           border-radius: 8px;
-          background: #fff;
+          background: var(--bg);
           overflow: hidden;
           text-align: left;
         }
@@ -238,20 +248,38 @@ export default function HomePage() {
             </div>
             <form onSubmit={handleUrlSubmit}>
               <div className="home-cta-input-row">
-              <input
-                name="url"
-                type="text"
-                className="input input-mono"
-                placeholder="https://example.com"
-                autoFocus
-              />
-              <button
-                type="submit"
-                className="btn btn-primary"
-              >
-                Go
-              </button>
+                <input
+                  name="url"
+                  type="text"
+                  value={url}
+                  onChange={(e) => {
+                    setUrl(e.target.value);
+                    if (error) setError(null);
+                  }}
+                  className={['input input-mono', error ? 'input-invalid' : '', error ? `validation-shake-${shakeVariant}` : '']
+                    .filter(Boolean)
+                    .join(' ')}
+                  placeholder="https://example.com"
+                  autoFocus
+                  aria-invalid={!!error}
+                  aria-describedby={error ? 'home-url-input-error' : undefined}
+                />
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                >
+                  Go
+                </button>
               </div>
+              {error && (
+                <p
+                  id="home-url-input-error"
+                  className="validation-message"
+                  style={{ textAlign: 'left' }}
+                >
+                  {error}
+                </p>
+              )}
             </form>
           </div>
         </div>

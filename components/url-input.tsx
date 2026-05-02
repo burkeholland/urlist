@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useId, useState, useRef } from 'react';
 import { normalizeUrl } from '@/lib/url';
 
 interface UrlInputProps {
@@ -13,6 +13,8 @@ interface UrlInputProps {
 export function UrlInput({ onSubmit, placeholder = 'Paste a URL...', loading = false, size = 'default' }: UrlInputProps) {
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [shakeVariant, setShakeVariant] = useState<'a' | 'b'>('a');
+  const errorId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -21,6 +23,7 @@ export function UrlInput({ onSubmit, placeholder = 'Paste a URL...', loading = f
 
     const result = normalizeUrl(value);
     if (!result.valid) {
+      setShakeVariant((variant) => (variant === 'a' ? 'b' : 'a'));
       setError(result.error || 'Invalid URL.');
       return;
     }
@@ -33,14 +36,15 @@ export function UrlInput({ onSubmit, placeholder = 'Paste a URL...', loading = f
   const rowClassName = size === 'large' ? 'add-row' : '';
   const rowStyle =
     size === 'large'
-      ? undefined
+      ? { marginBottom: 0, paddingBottom: 0 }
       : {
           display: 'flex',
           gap: '10px',
         };
+  const reserveMessageSpace = size === 'large';
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} style={size === 'large' ? { paddingBottom: '24px' } : undefined}>
       <div className={rowClassName} style={rowStyle}>
         <input
           ref={inputRef}
@@ -52,8 +56,12 @@ export function UrlInput({ onSubmit, placeholder = 'Paste a URL...', loading = f
           }}
           placeholder={placeholder}
           disabled={loading}
-          className="input input-mono"
+          className={['input input-mono', error ? 'input-invalid' : '', error ? `validation-shake-${shakeVariant}` : '']
+            .filter(Boolean)
+            .join(' ')}
           style={{ flex: 1 }}
+          aria-invalid={!!error}
+          aria-describedby={error ? errorId : undefined}
         />
         <button
           type="submit"
@@ -63,15 +71,13 @@ export function UrlInput({ onSubmit, placeholder = 'Paste a URL...', loading = f
           {loading ? 'Adding...' : 'Add'}
         </button>
       </div>
-      {error && (
+      {(error || reserveMessageSpace) && (
         <p
-          style={{
-            color: 'var(--danger)',
-            fontSize: '14px',
-            marginTop: '4px',
-          }}
+          id={error ? errorId : undefined}
+          className="validation-message"
+          aria-hidden={!error}
         >
-          {error}
+          {error || '\u00A0'}
         </p>
       )}
     </form>

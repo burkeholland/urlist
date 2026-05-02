@@ -23,7 +23,9 @@ export function LinkCard({ link, onDelete, onUpdate, isPublicView = false }: Lin
   const [imgError, setImgError] = useState(false);
   const [editingField, setEditingField] = useState<'title' | 'description' | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [copied, setCopied] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hostname = getHostname(link.url);
   const title = link.ogTitle || hostname;
   const description = link.ogDescription;
@@ -35,6 +37,38 @@ export function LinkCard({ link, onDelete, onUpdate, isPublicView = false }: Lin
       inputRef.current.select();
     }
   }, [editingField]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopy = async () => {
+    if (!navigator.clipboard) {
+      console.error('Clipboard API is not available.');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(link.url);
+      setCopied(true);
+
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+
+      copyTimeoutRef.current = setTimeout(() => {
+        setCopied(false);
+        copyTimeoutRef.current = null;
+      }, 2000);
+    } catch (error) {
+      console.error('Failed to copy link URL.', error);
+      setCopied(false);
+    }
+  };
 
   const startEditing = (field: 'title' | 'description') => {
     if (!onUpdate) return;
@@ -71,6 +105,14 @@ export function LinkCard({ link, onDelete, onUpdate, isPublicView = false }: Lin
           <div className="pub-card-domain">{hostname}</div>
           {description && <div className="pub-card-desc">{description}</div>}
         </div>
+        <button
+          type="button"
+          className="pub-card-copy btn btn-outline"
+          onClick={handleCopy}
+          aria-label={`Copy URL for ${title}`}
+        >
+          {copied ? 'Copied' : 'Copy'}
+        </button>
       </div>
     );
   }

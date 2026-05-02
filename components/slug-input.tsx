@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useId, useState, useEffect, useMemo } from 'react';
 import { useDebounce } from '@/hooks/use-debounce';
 import { validateSlugFormat } from '@/lib/slug';
 import type { SlugValidationStatus } from '@/lib/types';
@@ -15,6 +15,8 @@ type ApiState = { type: 'idle' } | { type: 'result'; available: boolean; slug: s
 
 export function SlugInput({ value, onChange, disabled }: SlugInputProps) {
   const [apiState, setApiState] = useState<ApiState>({ type: 'idle' });
+  const inputId = useId();
+  const errorId = useId();
   const debouncedSlug = useDebounce(value, 400);
 
   const formatCheck = useMemo(() => {
@@ -40,6 +42,8 @@ export function SlugInput({ value, onChange, disabled }: SlugInputProps) {
     if (apiState.type === 'error') return 'Could not check availability.';
     return null;
   }, [value, formatCheck, status, apiState]);
+
+  const hasValidationError = status === 'invalid' || status === 'taken';
 
   // Only fire API calls in the effect — setState only in async callbacks
   useEffect(() => {
@@ -67,37 +71,40 @@ export function SlugInput({ value, onChange, disabled }: SlugInputProps) {
     checking: 'checking...',
     valid: '✓ available',
     invalid: '',
-    taken: '✗ taken',
+    taken: '',
   }[status];
 
-  const statusClassName = ['url-status', status === 'valid' ? 'available' : '', status === 'taken' ? 'taken' : '']
+  const statusClassName = ['url-status', status === 'valid' ? 'available' : '']
     .filter(Boolean)
     .join(' ');
 
   return (
     <div className="field-group">
-      <label htmlFor="slug-input" className="label">
+      <label htmlFor={inputId} className="label">
         URL
       </label>
-      <div className="url-input-wrap">
+      <div
+        className={['url-input-wrap', hasValidationError ? 'input-invalid' : '', hasValidationError ? 'validation-shake-a' : '']
+          .filter(Boolean)
+          .join(' ')}
+      >
         <span className="url-prefix">urlist.app/</span>
         <input
-          id="slug-input"
+          id={inputId}
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value.toLowerCase())}
           placeholder="my-awesome-links"
           disabled={disabled}
+          aria-invalid={hasValidationError}
+          aria-describedby={error ? errorId : undefined}
         />
       </div>
-      <div className={statusClassName}>{statusText}</div>
+      {statusText && <div className={statusClassName}>{statusText}</div>}
       {error && (
         <div
-          style={{
-            marginTop: '4px',
-            fontSize: '14px',
-            color: 'var(--danger)',
-          }}
+          id={errorId}
+          className="validation-message"
         >
           {error}
         </div>

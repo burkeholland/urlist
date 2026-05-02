@@ -155,6 +155,20 @@ body {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(255,127,80,0.12);
 }
+.input.input-invalid,
+.input.input-invalid:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(220,38,38,0.12);
+}
+.validation-message {
+  color: var(--danger);
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.35;
+  margin: 3px 0 0;
+  padding: 0;
+}
 .input-sm {
   height: 36px;
   font-size: 15px;
@@ -203,6 +217,33 @@ textarea.input {
 .url-input-wrap:focus-within {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(255,127,80,0.12);
+}
+.url-input-wrap.input-invalid,
+.url-input-wrap.input-invalid:focus-within {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(220,38,38,0.12);
+}
+.validation-shake-a {
+  animation: validation-shake-a 0.18s ease-in-out;
+}
+.validation-shake-b {
+  animation: validation-shake-b 0.18s ease-in-out;
+}
+@keyframes validation-shake-a {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
+@keyframes validation-shake-b {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .validation-shake-a,
+  .validation-shake-b {
+    animation: none;
+  }
 }
 .url-prefix {
   font-family: var(--font-mono);
@@ -332,6 +373,11 @@ textarea.input {
   min-width: 0;
   flex: 1;
   overflow: hidden;
+}
+.pub-card-copy {
+  flex-shrink: 0;
+  margin-right: 12px;
+  font-family: var(--font-mono);
 }
 .pub-card-title {
   font-size: 16px;
