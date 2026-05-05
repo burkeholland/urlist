@@ -40,6 +40,7 @@ export function sanitizeText(value: unknown, maxLength: number): string | null {
 const LinkInputSchema = z.object({
   url: z.string().min(1),
   position: z.number().int().min(0),
+  pinned: z.boolean().optional().default(false),
   ogTitle: z.string().nullable().optional(),
   ogDescription: z.string().nullable().optional(),
   ogImage: z.string().nullable().optional(),

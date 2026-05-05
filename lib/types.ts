@@ -11,6 +11,7 @@ export interface ListRecord {
 export interface LinkRecord {
   url: string;
   position: number;
+  pinned: boolean;
   ogTitle: string | null;
   ogDescription: string | null;
   ogImage: string | null;
@@ -36,6 +37,7 @@ export interface DraftLink {
   id: string;
   url: string;
   position: number;
+  pinned: boolean;
   ogTitle: string | null;
   ogDescription: string | null;
   ogImage: string | null;
@@ -77,6 +79,7 @@ export interface PublishRequest {
   links: {
     url: string;
     position: number;
+    pinned: boolean;
     ogTitle: string | null;
     ogDescription: string | null;
     ogImage: string | null;
@@ -98,6 +101,7 @@ export interface UpdateRequest {
     id?: string;
     url: string;
     position: number;
+    pinned: boolean;
     ogTitle: string | null;
     ogDescription: string | null;
     ogImage: string | null;
@@ -209,3 +213,8 @@ export interface TrackLinkClickPayload {
 }
 
 export type TrackEventPayload = TrackPageViewPayload | TrackLinkClickPayload;
+
+export interface TrackValidationErrorPayload {
+  field: 'url';
+  errorMessage: string;
+}
