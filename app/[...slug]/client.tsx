@@ -24,7 +24,6 @@ function trackEvent(listId: string, payload: TrackEventPayload) {
 
 export function PublicListClient({ list, slug, justPublished }: PublicListClientProps) {
   const [showBanner, setShowBanner] = useState(justPublished);
-  const [copied, setCopied] = useState(false);
 
   const publicUrl =
     typeof window !== 'undefined' ? `${window.location.origin}/${slug}` : `/${slug}`;
@@ -63,16 +62,6 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
     }
   }, [showBanner]);
 
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(publicUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // fallback
-    }
-  };
-
   const handleLinkClick = useCallback(
     (linkId: string) => {
       trackEvent(list.listId, {
@@ -93,12 +82,6 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
           <div className="pub-banner">
             <span className="pub-banner-label">Published —</span>
             <span className="pub-banner-url">{publicUrl.replace(/^https?:\/\//, '')}</span>
-            <button
-              onClick={handleCopy}
-              className="btn btn-outline"
-            >
-              {copied ? 'Copied' : 'Copy'}
-            </button>
           </div>
         </div>
       )}
@@ -112,7 +95,7 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
         <hr className="divider" />
 
         <div className="pub-links">
-          {list.links.map((link) => (
+          {[...list.links].sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false)).map((link) => (
             <div key={link.id} onClick={() => handleLinkClick(link.id)}>
               <LinkCard link={link} isPublicView />
             </div>

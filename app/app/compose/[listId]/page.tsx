@@ -18,7 +18,7 @@ export default function EditComposePage({ params }: EditPageProps) {
   const { listId } = use(params);
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
-  const { description, setDescription, links, setLinks, loaded, addLink, updateLink, removeLink, reorderLinks, clearDraft } = useDraft(listId);
+  const { description, setDescription, links, setLinks, loaded, addLink, updateLink, removeLink, reorderLinks, pinLink, clearDraft } = useDraft(listId);
 
   const [listData, setListData] = useState<ListWithLinks | null>(null);
   const [fetching, setFetching] = useState(true);
@@ -52,6 +52,7 @@ export default function EditComposePage({ params }: EditPageProps) {
               id: l.id,
               url: l.url,
               position: l.position,
+              pinned: l.pinned ?? false,
               ogTitle: l.ogTitle,
               ogDescription: l.ogDescription,
               ogImage: l.ogImage,
@@ -78,6 +79,7 @@ export default function EditComposePage({ params }: EditPageProps) {
         id: linkId,
         url,
         position: links.length,
+        pinned: false,
         ogTitle: null,
         ogDescription: null,
         ogImage: null,
@@ -136,6 +138,7 @@ export default function EditComposePage({ params }: EditPageProps) {
             id: l.id,
             url: l.url,
             position: i,
+            pinned: l.pinned,
             ogTitle: l.ogTitle,
             ogDescription: l.ogDescription,
             ogImage: l.ogImage,
@@ -279,7 +282,7 @@ export default function EditComposePage({ params }: EditPageProps) {
             </h2>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <SortableLinkList links={links} onReorder={reorderLinks} onDelete={removeLink} onUpdate={updateLink} />
+            <SortableLinkList links={links} onReorder={reorderLinks} onDelete={removeLink} onUpdate={updateLink} onPin={pinLink} />
           </div>
         </section>
 

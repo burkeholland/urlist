@@ -14,17 +14,23 @@ export async function getList(listId: string): Promise<ListRecord | null> {
   return record as ListRecord;
 }
 
-// Read links for a list, sorted by position
+// Read links for a list, sorted pinned-first then by position
 export async function getLinks(listId: string): Promise<LinkWithId[]> {
   const { resources } = await getDb()
     .container('links')
-    .items.query<{ id: string; listId: string; url: string; position: number; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null; createdAt: number }>({
+    .items.query<{ id: string; listId: string; url: string; position: number; pinned: boolean | undefined; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null; createdAt: number }>({
       query: 'SELECT * FROM c WHERE c.listId = @listId ORDER BY c.position ASC',
       parameters: [{ name: '@listId', value: listId }],
     })
     .fetchAll();
 
-  return resources.map(({ listId: _listId, ...link }) => link as LinkWithId);
+  const links = resources.map(({ listId: _listId, ...link }) => ({
+    ...link,
+    pinned: link.pinned ?? false,
+  }) as LinkWithId);
+
+  // Sort pinned-first in app layer to safely handle existing docs without the field
+  return links.sort((a, b) => Number(b.pinned) - Number(a.pinned));
 }
 
 // Read a full list with links
@@ -122,7 +128,7 @@ export async function createList(params: {
   slug: string;
   description: string;
   ownerId: string | null;
-  links: { id: string; url: string; position: number; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null }[];
+  links: { id: string; url: string; position: number; pinned: boolean; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null }[];
 }): Promise<void> {
   const { listId, slug, description, ownerId, links } = params;
   const now = Date.now();
@@ -145,6 +151,7 @@ export async function createList(params: {
         listId,
         url: link.url,
         position: link.position,
+        pinned: link.pinned,
         ogTitle: link.ogTitle,
         ogDescription: link.ogDescription,
         ogImage: link.ogImage,
@@ -167,7 +174,7 @@ export async function createList(params: {
 export async function updateList(params: {
   listId: string;
   description?: string;
-  links?: { id: string; url: string; position: number; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null }[];
+  links?: { id: string; url: string; position: number; pinned: boolean; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null }[];
 }): Promise<number> {
   const { listId, description, links } = params;
   const now = Date.now();
@@ -201,6 +208,7 @@ export async function updateList(params: {
           listId,
           url: link.url,
           position: link.position,
+          pinned: link.pinned,
           ogTitle: link.ogTitle,
           ogDescription: link.ogDescription,
           ogImage: link.ogImage,

@@ -28,6 +28,7 @@ function ComposeContent() {
     updateLink,
     removeLink,
     reorderLinks,
+    pinLink,
     clearDraft,
   } = useDraft();
 
@@ -73,6 +74,7 @@ function ComposeContent() {
         id: linkId,
         url,
         position: links.length,
+        pinned: false,
         ogTitle: null,
         ogDescription: null,
         ogImage: null,
@@ -135,6 +137,7 @@ function ComposeContent() {
           links: links.map((l, i) => ({
             url: l.url,
             position: i,
+            pinned: l.pinned,
             ogTitle: l.ogTitle,
             ogDescription: l.ogDescription,
             ogImage: l.ogImage,
@@ -256,7 +259,7 @@ function ComposeContent() {
           </div>
 
           <div className="pub-links">
-            <SortableLinkList links={links} onReorder={reorderLinks} onDelete={removeLink} onUpdate={updateLink} />
+            <SortableLinkList links={links} onReorder={reorderLinks} onDelete={removeLink} onUpdate={updateLink} onPin={pinLink} />
           </div>
 
           <div className="compose-actions">

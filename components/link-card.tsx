@@ -8,6 +8,7 @@ interface LinkCardProps {
   link: DraftLink | LinkWithId;
   onDelete?: (id: string) => void;
   onUpdate?: (id: string, updates: Partial<DraftLink>) => void;
+  onPin?: (id: string) => void;
   isPublicView?: boolean;
 }
 
@@ -19,17 +20,16 @@ function getHostname(url: string): string {
   }
 }
 
-export function LinkCard({ link, onDelete, onUpdate, isPublicView = false }: LinkCardProps) {
+export function LinkCard({ link, onDelete, onUpdate, onPin, isPublicView = false }: LinkCardProps) {
   const [imgError, setImgError] = useState(false);
   const [editingField, setEditingField] = useState<'title' | 'description' | null>(null);
   const [editValue, setEditValue] = useState('');
-  const [copied, setCopied] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hostname = getHostname(link.url);
   const title = link.ogTitle || hostname;
   const description = link.ogDescription;
   const isLoading = 'ogLoading' in link && link.ogLoading;
+  const isPinned = link.pinned ?? false;
 
   useEffect(() => {
     if (editingField && inputRef.current) {
@@ -37,38 +37,6 @@ export function LinkCard({ link, onDelete, onUpdate, isPublicView = false }: Lin
       inputRef.current.select();
     }
   }, [editingField]);
-
-  useEffect(() => {
-    return () => {
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  const handleCopy = async () => {
-    if (!navigator.clipboard) {
-      console.error('Clipboard API is not available.');
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(link.url);
-      setCopied(true);
-
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
-      }
-
-      copyTimeoutRef.current = setTimeout(() => {
-        setCopied(false);
-        copyTimeoutRef.current = null;
-      }, 2000);
-    } catch (error) {
-      console.error('Failed to copy link URL.', error);
-      setCopied(false);
-    }
-  };
 
   const startEditing = (field: 'title' | 'description') => {
     if (!onUpdate) return;
@@ -89,7 +57,7 @@ export function LinkCard({ link, onDelete, onUpdate, isPublicView = false }: Lin
 
   if (isPublicView) {
     return (
-      <div className="pub-card">
+      <div className={isPinned ? 'pub-card pub-card--pinned' : 'pub-card'}>
         <div className="pub-card-img">
           {link.ogImage && !imgError ? (
             /* eslint-disable-next-line @next/next/no-img-element */
@@ -99,20 +67,21 @@ export function LinkCard({ link, onDelete, onUpdate, isPublicView = false }: Lin
           )}
         </div>
         <div className="pub-card-body">
+          {isPinned && (
+            <div className="pub-card-pinned-label" aria-label="Pinned">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <line x1="12" y1="17" x2="12" y2="22" />
+                <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+              </svg>
+              Pinned
+            </div>
+          )}
           <div className="pub-card-title">
             <a href={link.url} target="_blank" rel="noopener noreferrer">{title}</a>
           </div>
           <div className="pub-card-domain">{hostname}</div>
           {description && <div className="pub-card-desc">{description}</div>}
         </div>
-        <button
-          type="button"
-          className="pub-card-copy btn btn-outline"
-          onClick={handleCopy}
-          aria-label={`Copy URL for ${title}`}
-        >
-          {copied ? 'Copied' : 'Copy'}
-        </button>
       </div>
     );
   }
@@ -190,6 +159,31 @@ export function LinkCard({ link, onDelete, onUpdate, isPublicView = false }: Lin
           >{description || (onUpdate ? 'Add a description…' : '')}</div>
         )}
       </div>
+      {onPin && (
+        <button
+          onClick={() => onPin(link.id)}
+          title={isPinned ? 'Unpin' : 'Pin to top'}
+          style={{
+            alignSelf: 'start',
+            margin: '10px 0 0 0',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: 4,
+            borderRadius: 4,
+            color: isPinned ? 'var(--accent)' : 'var(--text-muted)',
+            fontSize: 16,
+            lineHeight: 1,
+          }}
+          aria-label={isPinned ? 'Unpin link' : 'Pin link to top'}
+          aria-pressed={isPinned}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill={isPinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <line x1="12" y1="17" x2="12" y2="22" />
+            <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+          </svg>
+        </button>
+      )}
       {onDelete && (
         <button
           onClick={() => onDelete(link.id)}

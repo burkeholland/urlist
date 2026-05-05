@@ -181,6 +181,7 @@ export async function POST(request: NextRequest) {
     id: generateLinkId(),
     url: link.url,
     position: link.position,
+    pinned: link.pinned ?? false,
     ogTitle: sanitizeText(link.ogTitle, MAX_OG_TITLE_LENGTH),
     ogDescription: sanitizeText(link.ogDescription, MAX_OG_DESCRIPTION_LENGTH),
     ogImage: link.ogImage && isValidHttpUrl(link.ogImage) ? link.ogImage : null,

@@ -26,9 +26,10 @@ interface SortableLinkListProps {
   onReorder: (links: DraftLink[]) => void;
   onDelete: (id: string) => void;
   onUpdate?: (id: string, updates: Partial<DraftLink>) => void;
+  onPin?: (id: string) => void;
 }
 
-function SortableItem({ link, onDelete, onUpdate }: { link: DraftLink; onDelete: (id: string) => void; onUpdate?: (id: string, updates: Partial<DraftLink>) => void }) {
+function SortableItem({ link, onDelete, onUpdate, onPin }: { link: DraftLink; onDelete: (id: string) => void; onUpdate?: (id: string, updates: Partial<DraftLink>) => void; onPin?: (id: string) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: link.id,
   });
@@ -60,14 +61,14 @@ function SortableItem({ link, onDelete, onUpdate }: { link: DraftLink; onDelete:
           </svg>
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <LinkCard link={link} onDelete={onDelete} onUpdate={onUpdate} />
+          <LinkCard link={link} onDelete={onDelete} onUpdate={onUpdate} onPin={onPin} />
         </div>
       </div>
     </div>
   );
 }
 
-export function SortableLinkList({ links, onReorder, onDelete, onUpdate }: SortableLinkListProps) {
+export function SortableLinkList({ links, onReorder, onDelete, onUpdate, onPin }: SortableLinkListProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -80,8 +81,7 @@ export function SortableLinkList({ links, onReorder, onDelete, onUpdate }: Sorta
     if (over && active.id !== over.id) {
       const oldIndex = links.findIndex((l) => l.id === active.id);
       const newIndex = links.findIndex((l) => l.id === over.id);
-      const reordered = arrayMove(links, oldIndex, newIndex);
-      onReorder(reordered);
+      onReorder(arrayMove(links, oldIndex, newIndex));
     }
   }
 
@@ -111,7 +111,7 @@ export function SortableLinkList({ links, onReorder, onDelete, onUpdate }: Sorta
       <SortableContext items={links.map((l) => l.id)} strategy={verticalListSortingStrategy}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {links.map((link) => (
-            <SortableItem key={link.id} link={link} onDelete={onDelete} onUpdate={onUpdate} />
+            <SortableItem key={link.id} link={link} onDelete={onDelete} onUpdate={onUpdate} onPin={onPin} />
           ))}
         </div>
       </SortableContext>
