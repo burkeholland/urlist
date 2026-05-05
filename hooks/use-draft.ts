@@ -12,6 +12,7 @@ const DraftLinkSchema = z.object({
   id: z.string(),
   url: z.string(),
   position: z.number(),
+  pinned: z.boolean().optional().default(false),
   ogTitle: z.string().nullable(),
   ogDescription: z.string().nullable(),
   ogImage: z.string().nullable(),
@@ -143,7 +144,7 @@ export function useDraft(listId?: string) {
   }, [listId, setSlug, setDescription, setLinks]);
 
   const addLink = useCallback((link: DraftLink) => {
-    setLinks((prev) => [...prev, { ...link, position: prev.length }]);
+    setLinks((prev) => [...prev, { ...link, position: prev.length, pinned: false }]);
   }, [setLinks]);
 
   const removeLink = useCallback((linkId: string) => {
@@ -156,6 +157,12 @@ export function useDraft(listId?: string) {
 
   const reorderLinks = useCallback((reordered: DraftLink[]) => {
     setLinks(reordered.map((l, i) => ({ ...l, position: i })));
+  }, [setLinks]);
+
+  const pinLink = useCallback((linkId: string) => {
+    setLinks((prev) =>
+      prev.map((l) => ({ ...l, pinned: l.id === linkId ? !l.pinned : false })),
+    );
   }, [setLinks]);
 
   return {
@@ -171,6 +178,7 @@ export function useDraft(listId?: string) {
     updateLink,
     removeLink,
     reorderLinks,
+    pinLink,
     clearDraft: clearCurrentDraft,
   };
 }
