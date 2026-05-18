@@ -352,11 +352,20 @@ textarea.input {
   transition: transform 0.15s, box-shadow 0.15s;
 }
 .pub-card--pinned {
-  height: auto;
-  min-height: 96px;
-  border-color: var(--accent);
-  border-left-width: 4px;
   background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  position: relative;
+}
+
+.pub-card--pinned::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 28px;
+  background: var(--accent);
+  border-radius: 0 3px 3px 0;
 }
 .pub-card-img {
   width: 56px;
@@ -367,14 +376,8 @@ textarea.input {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border-radius: 50%;
-  margin: 12px;
-}
-.pub-card--pinned .pub-card-img {
-  width: 70px;
-  height: 70px;
   border-radius: var(--radius-sm);
-  margin: 14px 14px 14px 12px;
+  margin: 12px;
 }
 .pub-card-img img {
   width: 100%;
@@ -387,20 +390,15 @@ textarea.input {
   flex: 1;
   overflow: hidden;
 }
-.pub-card--pinned .pub-card-body {
-  padding: 14px 12px;
+.pub-card-pin-icon {
+  color: var(--accent);
+  opacity: 0.6;
+  flex-shrink: 0;
+  align-self: center;
+  margin: 0 12px 0 8px;
 }
 .pub-card-pinned-label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--accent);
-  margin-bottom: 4px;
+  display: none;
 }
 .pub-card-title {
   font-size: 16px;
@@ -408,10 +406,6 @@ textarea.input {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.pub-card--pinned .pub-card-title {
-  font-size: 17px;
-  font-weight: 600;
 }
 .pub-card-title a {
   color: var(--link);

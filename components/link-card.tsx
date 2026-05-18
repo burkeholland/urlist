@@ -67,21 +67,18 @@ export function LinkCard({ link, onDelete, onUpdate, onPin, isPublicView = false
           )}
         </div>
         <div className="pub-card-body">
-          {isPinned && (
-            <div className="pub-card-pinned-label" aria-label="Pinned">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <line x1="12" y1="17" x2="12" y2="22" />
-                <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
-              </svg>
-              Pinned
-            </div>
-          )}
           <div className="pub-card-title">
             <a href={link.url} target="_blank" rel="noopener noreferrer">{title}</a>
           </div>
           <div className="pub-card-domain">{hostname}</div>
           {description && <div className="pub-card-desc">{description}</div>}
         </div>
+        {isPinned && (
+          <svg className="pub-card-pin-icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-label="Pinned">
+            <line x1="12" y1="17" x2="12" y2="22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+          </svg>
+        )}
       </div>
     );
   }

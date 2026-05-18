@@ -106,9 +106,6 @@ export function NavHeader() {
               urlist<span className="text-[var(--accent)]">.</span>
             </Link>
             <div className="flex items-center gap-[14px]">
-              <Link href="/" className="text-[15px] font-medium text-[var(--text)] hover:text-[var(--text)]">
-                Home
-              </Link>
               <Link
                 href="/app/compose"
                 className="text-[15px] text-[var(--text-muted)] no-underline transition-colors duration-150 hover:text-[var(--text)]"
