@@ -46,9 +46,13 @@ html[data-theme="dark"] {
   --success: #22c55e;
 }
 
+html {
+  font-size: 112.5%; /* 18px base — change here to scale the whole app */
+}
+
 body {
   font-family: var(--font-body);
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.5;
   color: var(--text);
   background: var(--bg-gradient);
@@ -64,7 +68,7 @@ body {
   align-items: center;
   justify-content: center;
   font-family: var(--font-body);
-  font-size: 15px;
+  font-size: 0.9375rem;
   font-weight: 500;
   line-height: 1;
   border-radius: var(--radius);
@@ -83,7 +87,7 @@ body {
 .btn-sm {
   height: 30px;
   padding: 0 10px;
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 .btn-outline {
   background: var(--surface);
@@ -91,7 +95,7 @@ body {
   border-color: var(--surface-border);
   height: 30px;
   padding: 0 10px;
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 .btn-outline:hover { background: var(--bg-secondary); }
 .btn-ghost {
@@ -100,7 +104,7 @@ body {
   color: var(--text-muted);
   padding: 0;
   cursor: pointer;
-  font-size: 15px;
+  font-size: 0.9375rem;
   transition: color 0.15s;
 }
 .btn-ghost:hover { color: var(--text); }
@@ -110,7 +114,7 @@ body {
   color: var(--text-muted);
   padding: 0;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 0.875rem;
   transition: color 0.15s;
 }
 .btn-danger-ghost:hover { color: var(--danger); }
@@ -125,7 +129,7 @@ body {
 .add-row .input {
   flex: 1;
   height: 56px;
-  font-size: 19px;
+  font-size: 1.1875rem;
   padding: 0 18px;
   border-radius: 8px;
   border-color: var(--surface-border);
@@ -133,14 +137,14 @@ body {
 .add-row .btn {
   height: 56px;
   padding: 0 28px;
-  font-size: 18px;
+  font-size: 1.125rem;
   border-radius: 8px;
 }
 
 /* ---- INPUTS ---- */
 .input {
   font-family: var(--font-body);
-  font-size: 16px;
+  font-size: 1rem;
   height: 38px;
   padding: 0 10px;
   border: 1.5px solid var(--input-border);
@@ -164,18 +168,18 @@ body {
   color: var(--danger);
   display: block;
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 0.875rem;
   line-height: 1.35;
   margin: 3px 0 0;
   padding: 0;
 }
 .input-sm {
   height: 36px;
-  font-size: 15px;
+  font-size: 0.9375rem;
 }
 .input-mono {
   font-family: var(--font-mono);
-  font-size: 15px;
+  font-size: 0.9375rem;
 }
 textarea.input {
   height: auto;
@@ -187,7 +191,7 @@ textarea.input {
 /* ---- LABEL ---- */
 .label {
   display: block;
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -198,8 +202,8 @@ textarea.input {
 /* ---- UTILITIES ---- */
 .mono { font-family: var(--font-mono); }
 .muted { color: var(--text-muted); }
-.small { font-size: 15px; }
-.xsmall { font-size: 14px; }
+.small { font-size: 0.9375rem; }
+.xsmall { font-size: 0.875rem; }
 .link-style { color: var(--link); text-decoration: none; }
 .link-style:hover { text-decoration: underline; }
 .divider { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
@@ -247,7 +251,7 @@ textarea.input {
 }
 .url-prefix {
   font-family: var(--font-mono);
-  font-size: 15px;
+  font-size: 0.9375rem;
   color: var(--text-muted);
   padding: 0 0 0 10px;
   white-space: nowrap;
@@ -259,14 +263,14 @@ textarea.input {
   border: none;
   outline: none;
   font-family: var(--font-mono);
-  font-size: 15px;
+  font-size: 0.9375rem;
   height: 36px;
   padding: 0 10px 0 2px;
   background: transparent;
   color: var(--text);
 }
 .url-status {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-family: var(--font-mono);
   margin-top: 4px;
 }
@@ -278,19 +282,19 @@ textarea.input {
   border-radius: 8px;
 }
 .compose-meta-panel .url-prefix {
-  font-size: 18px;
+  font-size: 1.125rem;
   line-height: 56px;
   padding-left: 18px;
 }
 .compose-meta-panel .url-input-wrap input {
-  font-size: 19px;
+  font-size: 1.1875rem;
   height: 56px;
   padding: 0 18px 0 4px;
 }
 .compose-meta-panel textarea.input {
   height: 56px;
   min-height: 56px;
-  font-size: 15px;
+  font-size: 0.9375rem;
   line-height: 1.35;
   padding: 10px 18px;
   border-radius: 8px;
@@ -300,7 +304,7 @@ textarea.input {
 /* ---- CHAR COUNT ---- */
 .char-count {
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 0.875rem;
   color: var(--text-muted);
   text-align: right;
   margin-top: 3px;
@@ -311,7 +315,7 @@ textarea.input {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-family: var(--font-mono);
   background: var(--surface);
   border: 1px solid var(--surface-border);
@@ -328,7 +332,7 @@ textarea.input {
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1;
   padding: 2px 4px;
   border-radius: 4px;
@@ -347,7 +351,7 @@ textarea.input {
   display: flex;
   align-items: center;
   gap: 0;
-  height: 80px;
+  height: 92px;
   background: var(--surface);
   transition: transform 0.15s, box-shadow 0.15s;
 }
@@ -377,7 +381,7 @@ textarea.input {
   justify-content: center;
   overflow: hidden;
   border-radius: var(--radius-sm);
-  margin: 12px;
+  margin: 16px;
 }
 .pub-card-img img {
   width: 100%;
@@ -385,7 +389,7 @@ textarea.input {
   object-fit: cover;
 }
 .pub-card-body {
-  padding: 10px 12px;
+  padding: 16px 20px;
   min-width: 0;
   flex: 1;
   overflow: hidden;
@@ -401,7 +405,7 @@ textarea.input {
   display: none;
 }
 .pub-card-title {
-  font-size: 16px;
+  font-size: 0.875rem;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -418,7 +422,7 @@ textarea.input {
 .pub-card-title a:hover { text-decoration: underline; }
 .pub-card-domain {
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 0.75rem;
   color: var(--text-muted);
   margin-top: 1px;
   white-space: nowrap;
@@ -426,7 +430,7 @@ textarea.input {
   text-overflow: ellipsis;
 }
 .pub-card-desc {
-  font-size: 15px;
+  font-size: 0.8125rem;
   color: var(--text-muted);
   margin-top: 4px;
   line-height: 1.4;
