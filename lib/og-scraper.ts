@@ -47,14 +47,13 @@ async function validateUrlNotPrivate(urlString: string): Promise<{ safe: boolean
       return { safe: true };
     }
 
-    // Resolve hostname and check all addresses
-    const allAddresses: string[] = [];
+    // Resolve hostname using the OS resolver path Node uses for outbound connections.
+    let allAddresses: string[];
     try {
-      allAddresses.push(...(await dns.resolve4(hostname)));
-    } catch { /* no A records */ }
-    try {
-      allAddresses.push(...(await dns.resolve6(hostname)));
-    } catch { /* no AAAA records */ }
+      allAddresses = (await dns.lookup(hostname, { all: true })).map(({ address }) => address);
+    } catch {
+      allAddresses = [];
+    }
 
     // Fail closed: if DNS can't resolve, block rather than allow
     if (allAddresses.length === 0) {

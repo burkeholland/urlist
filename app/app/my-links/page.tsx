@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { NavHeader } from '@/components/nav-header';
+import { ConfirmModal } from '@/components/confirm-modal';
 import { useAuth } from '@/hooks/use-auth';
 import type { ListWithLinks, ListAnalyticsSummary } from '@/lib/types';
 
@@ -17,15 +17,14 @@ export default function MyLinksPage() {
   const [lists, setLists] = useState<ListWithStats[]>([]);
   const [fetching, setFetching] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<ListWithStats | null>(null);
 
-  // Redirect if not authenticated
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/');
     }
   }, [authLoading, user, router]);
 
-  // Fetch user's lists
   useEffect(() => {
     async function fetchLists() {
       if (!user) return;
@@ -49,18 +48,24 @@ export default function MyLinksPage() {
     }
   }, [authLoading, user]);
 
-  const handleDelete = async (listId: string) => {
-    if (!confirm('Are you sure you want to delete this list? This cannot be undone.')) return;
+  const handleDelete = async (e: React.MouseEvent, list: ListWithStats) => {
+    e.stopPropagation();
+    setPendingDelete(list);
+  };
 
-    setDeletingId(listId);
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    const list = pendingDelete;
+    setPendingDelete(null);
+    setDeletingId(list.listId);
     try {
-      const res = await fetch(`/api/lists/${listId}`, {
+      const res = await fetch(`/api/lists/${list.listId}`, {
         method: 'DELETE',
         credentials: 'include',
       });
 
       if (res.ok) {
-        setLists((prev) => prev.filter((l) => l.listId !== listId));
+        setLists((prev) => prev.filter((l) => l.listId !== list.listId));
       } else {
         const data = await res.json();
         alert(data.error?.message || 'Failed to delete list.');
@@ -72,39 +77,25 @@ export default function MyLinksPage() {
     }
   };
 
+  const skeletonGrid = (
+    <div className="tile-grid">
+      {[1, 2, 3, 4].map((i) => (
+        <div key={i} className="skeleton-tile" />
+      ))}
+    </div>
+  );
+
   if (authLoading) {
     return (
       <div>
         <NavHeader />
-        <main className="page">
-          <div className="loading-skeleton">
-            <div className="skeleton skeleton-title" />
-            <div className="skeleton skeleton-row" />
-            <div className="skeleton skeleton-row" />
-          </div>
-        </main>
+        <main className="page">{skeletonGrid}</main>
         <style jsx>{`
-          .page {
-            max-width: 860px;
-            margin: 0 auto;
-            padding: 28px 16px 48px;
-          }
-          .loading-skeleton {
-            display: grid;
-            gap: 10px;
-          }
-          .skeleton {
-            border-radius: 8px;
-            background: var(--bg-secondary);
-          }
-          .skeleton-title {
-            height: 26px;
-            width: 140px;
-          }
-          .skeleton-row {
-            height: 38px;
-            width: 100%;
-          }
+          .page { max-width: 860px; margin: 0 auto; padding: 28px 16px 48px; }
+          .tile-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+          .skeleton-tile { aspect-ratio: 1; border-radius: var(--radius); background: var(--bg-secondary); }
+          @media (max-width: 900px) { .tile-grid { grid-template-columns: repeat(3, 1fr); } }
+          @media (max-width: 600px) { .tile-grid { grid-template-columns: repeat(2, 1fr); } }
         `}</style>
       </div>
     );
@@ -114,58 +105,103 @@ export default function MyLinksPage() {
     <div>
       <NavHeader />
       <main className="page">
-        <div className="my-header">
-          <h1>My lists</h1>
-          <Link href="/app/compose" className="btn btn-primary btn-sm">
-            New list
-          </Link>
-        </div>
+        <h1 className="page-title">My lists</h1>
 
-        {fetching ? (
-          <div className="loading-skeleton">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="skeleton skeleton-row" />
-            ))}
-          </div>
-        ) : lists.length === 0 ? (
-          <div className="empty-state">
-            <p>
-              No lists.{' '}
-              <Link href="/app/compose" className="link-style">
-                Create one
-              </Link>
-            </p>
-          </div>
-        ) : (
-          <div id="my-lists">
+        {fetching ? skeletonGrid : (
+          <div className="tile-grid">
+            {/* Create new list tile */}
+            <div
+              className="tile create-tile"
+              onClick={() => router.push('/app/compose')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && router.push('/app/compose')}
+            >
+              <div className="create-inner">
+                <div className="create-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </div>
+                <span className="create-label">Create new list</span>
+              </div>
+            </div>
+
             {lists.map((list) => (
-              <div key={list.listId} className="my-row">
-                <div className="my-slug">
-                  <Link href={`/${list.slug}`}>/{list.slug}</Link>
+              <div
+                key={list.listId}
+                className="tile list-tile"
+                onClick={() => router.push(`/app/compose/${list.listId}`)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === 'Enter' && router.push(`/app/compose/${list.listId}`)}
+              >
+                <div className="tile-top">
+                  <div className="tile-slug">
+                    <span className="slug-slash">/</span>
+                    <span className="slug-name">{list.slug}</span>
+                  </div>
+                  {list.description && (
+                    <p className="tile-desc">{list.description}</p>
+                  )}
                 </div>
-                <div className="my-stats">
-                  <span className="stat-badge" title="Views">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                    {list.stats?.totalViews ?? 0}
-                  </span>
-                  <span className="stat-badge" title="Clicks">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5"/></svg>
-                    {list.stats?.totalClicks ?? 0}
-                  </span>
-                </div>
-                <span className="count-badge">{list.links.length}</span>
-                <div className="my-actions">
-                  <Link href={`/app/analytics/${list.listId}`} className="analytics-link" title="Analytics">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
-                  </Link>
-                  <Link href={`/app/compose/${list.listId}`}>Edit</Link>
-                  <button
-                    onClick={() => handleDelete(list.listId)}
-                    disabled={deletingId === list.listId}
-                    className="delete"
-                  >
-                    {deletingId === list.listId ? 'Deleting...' : 'Delete'}
-                  </button>
+                <div className="tile-bottom">
+                  <div className="stats-row">
+                    <span className="stat-pill">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                      </svg>
+                      {list.stats?.totalViews ?? 0}
+                    </span>
+                    <span className="stat-pill">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5"/>
+                      </svg>
+                      {list.stats?.totalClicks ?? 0}
+                    </span>
+                  </div>
+                  <div className="tile-meta">
+                    <span className="link-count">{list.links.length} links</span>
+                    <div className="tile-actions">
+                      <a
+                        href={`/${list.slug}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="icon-btn icon-btn-link"
+                        title="View public URL"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                          <polyline points="15 3 21 3 21 9"/>
+                          <line x1="10" y1="14" x2="21" y2="3"/>
+                        </svg>
+                      </a>
+                      <button
+                        className="icon-btn icon-btn-analytics"
+                        title="Analytics"
+                        onClick={(e) => { e.stopPropagation(); router.push(`/app/analytics/${list.listId}`); }}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M18 20V10M12 20V4M6 20v-6"/>
+                        </svg>
+                      </button>
+                      <button
+                        className="icon-btn icon-btn-delete"
+                        title="Delete"
+                        disabled={deletingId === list.listId}
+                        onClick={(e) => handleDelete(e, list)}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6"/>
+                          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                          <path d="M10 11v6M14 11v6"/>
+                          <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
@@ -178,127 +214,183 @@ export default function MyLinksPage() {
           margin: 0 auto;
           padding: 28px 16px 48px;
         }
-        .my-header {
+        .page-title {
+          font-size: 20px;
+          font-weight: 600;
+          margin-bottom: 16px;
+        }
+        /* Grid */
+        .tile-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 10px;
+        }
+        @media (max-width: 900px) {
+          .tile-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+        @media (max-width: 600px) {
+          .tile-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        /* Base tile */
+        .tile {
+          aspect-ratio: 1;
+          padding: 12px;
+          border-radius: var(--radius);
+          border: 1px solid var(--border);
+          background: var(--surface);
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          cursor: pointer;
+          transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s, background 0.15s;
+        }
+        .tile:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+          border-color: var(--input-border);
+        }
+        /* Create tile */
+        .create-tile {
+          border: 1.5px dashed var(--border);
+          background: transparent;
+          justify-content: center;
+          align-items: center;
+        }
+        .create-tile:hover {
+          border-color: var(--accent);
+          background: var(--blue-bg);
+        }
+        .create-tile:hover .create-icon {
+          background: var(--accent);
+          color: white;
+        }
+        .create-inner {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+        }
+        .create-icon {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          background: var(--blue-bg);
+          color: var(--accent);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: background 0.15s, color 0.15s;
+        }
+        .create-label {
+          font-size: 12px;
+          color: var(--text-muted);
+          text-align: center;
+        }
+        /* List tile - top */
+        .tile-top {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          overflow: hidden;
+        }
+        .tile-slug {
+          font-family: var(--font-mono);
+          font-size: 13px;
+          font-weight: 500;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .slug-slash {
+          color: var(--accent);
+        }
+        .slug-name {
+          color: var(--text);
+        }
+        .tile-desc {
+          font-size: 12px;
+          color: var(--text-muted);
+          line-height: 1.4;
+          margin: 0;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        /* List tile - bottom */
+        .tile-bottom {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .stats-row {
+          display: flex;
+          gap: 4px;
+          flex-wrap: wrap;
+        }
+        .stat-pill {
+          font-family: var(--font-mono);
+          font-size: 13px;
+          background: var(--bg-secondary);
+          border-radius: 3px;
+          padding: 4px 7px;
+          color: var(--text-muted);
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+        }
+        .tile-meta {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          margin-bottom: 12px;
         }
-        .my-header h1 {
-          font-size: 20px;
-          font-weight: 600;
-        }
-        .my-row {
-          display: flex;
-          align-items: center;
-          padding: 9px 0;
-          border-bottom: 1px solid var(--border);
-          gap: 8px;
-        }
-        .my-row:first-child {
-          border-top: 1px solid var(--border);
-        }
-        .my-stats {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-        }
-        .stat-badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 3px;
+        .link-count {
           font-family: var(--font-mono);
-          font-size: 12px;
+          font-size: 10px;
           color: var(--text-muted);
-          background: var(--bg-secondary);
-          padding: 2px 6px;
-          border-radius: 4px;
         }
-        .count-badge {
-          font-family: var(--font-mono);
-          font-size: 12px;
-          color: var(--text-muted);
-          background: var(--bg-secondary);
-          padding: 2px 8px;
-          border-radius: 10px;
-        }
-        .analytics-link {
-          display: inline-flex;
-          align-items: center;
-          color: var(--text-muted);
-          transition: color 0.15s;
-        }
-        .analytics-link:hover {
-          color: var(--accent);
-        }
-        .my-slug {
-          font-family: var(--font-mono);
-          font-size: 15px;
-          font-weight: 500;
-          flex: 1;
-          min-width: 0;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-        .my-slug a {
-          color: var(--link);
-          text-decoration: none;
-        }
-        .my-slug a:hover {
-          text-decoration: underline;
-        }
-        .my-actions {
+        .tile-actions {
           display: flex;
           align-items: center;
           gap: 10px;
-          flex-shrink: 0;
         }
-        .my-actions a,
-        .my-actions button {
-          font-size: 14px;
-          color: var(--text-muted);
-          text-decoration: none;
-          transition: color 0.15s;
+        .icon-btn {
           background: none;
-          border: 0;
+          border: none;
           padding: 0;
           margin: 0;
-          line-height: 1.2;
-        }
-        .my-actions a:hover,
-        .my-actions button:hover {
-          color: var(--text);
-        }
-        .my-actions .delete:hover {
-          color: var(--danger);
-        }
-        .my-actions .delete:disabled {
-          cursor: not-allowed;
-          opacity: 0.65;
-        }
-        .empty-state {
-          padding: 32px 0;
-          text-align: center;
-        }
-        .empty-state p {
-          font-family: var(--font-mono);
-          font-size: 15px;
+          cursor: pointer;
           color: var(--text-muted);
+          display: inline-flex;
+          align-items: center;
+          transition: color 0.15s;
+          line-height: 1;
+          text-decoration: none;
         }
-        .loading-skeleton {
-          display: grid;
-          gap: 10px;
+        .icon-btn:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
         }
-        .skeleton {
-          border-radius: 8px;
+        .icon-btn-link:hover { color: var(--link); }
+        .icon-btn-analytics:hover { color: var(--accent); }
+        .icon-btn-delete:hover { color: var(--danger); }
+        /* Skeleton */
+        .skeleton-tile {
+          aspect-ratio: 1;
+          border-radius: var(--radius);
           background: var(--bg-secondary);
         }
-        .skeleton-row {
-          height: 38px;
-          width: 100%;
-        }
       `}</style>
+      {pendingDelete && (
+        <ConfirmModal
+          title={`Delete /${pendingDelete.slug}?`}
+          message="This cannot be undone."
+          confirmLabel="Delete"
+          danger
+          onConfirm={confirmDelete}
+          onClose={() => setPendingDelete(null)}
+        />
+      )}
     </div>
   );
 }
