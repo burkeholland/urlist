@@ -20,13 +20,13 @@ export function sanitizeText(value: unknown, maxLength: number): string | null {
   if (typeof value !== 'string' || !value) return null;
 
   const cleaned = value
+    .replace(/<[^>]*>/g, '')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#x27;/g, "'")
     .replace(/&#x2F;/g, '/')
-    .replace(/<[^>]*>/g, '')
     // eslint-disable-next-line no-control-regex
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
     .trim()
