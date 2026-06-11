@@ -64,6 +64,20 @@ describe('checkRateLimit', () => {
     const result = await checkRateLimit('user3', config2);
     expect(result.allowed).toBe(true);
   });
+
+
+  it('resets counter when window changes', async () => {
+    const config = { endpoint: 'test-window-reset', limit: 2, windowSeconds: 60 };
+    await checkRateLimit('window-user', config);
+    await checkRateLimit('window-user', config);
+    const blocked = await checkRateLimit('window-user', config);
+    expect(blocked.allowed).toBe(false);
+
+    vi.advanceTimersByTime(61 * 1000);
+
+    const afterReset = await checkRateLimit('window-user', config);
+    expect(afterReset.allowed).toBe(true);
+  });
 });
 
 describe('RATE_LIMITS', () => {

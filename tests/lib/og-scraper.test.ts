@@ -115,4 +115,17 @@ describe('scrapeOgMetadata', () => {
     expect(result.ogTitle).toBeNull();
     expect(result.url).toBe('https://slow-site.com');
   });
+
+
+  it('rejects cloud metadata IP (169.254.169.254)', async () => {
+    const dns = await import('dns/promises');
+    (dns.default.lookup as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ address: '169.254.169.254', family: 4 }]);
+    const result = await scrapeOgMetadata('https://metadata.cloud');
+    expect(result.ogTitle).toBeNull();
+  });
+
+  it('rejects IPv6 loopback ::1', async () => {
+    const result = await scrapeOgMetadata('http://[::1]/admin');
+    expect(result.ogTitle).toBeNull();
+  });
 });

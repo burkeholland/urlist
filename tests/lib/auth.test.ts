@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { _resetSecretCache, createSessionToken, verifyAuth, getSessionUser, AuthError, requireAuth } from '@/lib/auth';
 import { NextRequest } from 'next/server';
 
@@ -114,5 +114,50 @@ describe('AuthError', () => {
     expect(err.message).toBe('test message');
     expect(err.name).toBe('AuthError');
     expect(err instanceof Error).toBe(true);
+  });
+});
+
+
+describe('JWT security boundaries', () => {
+  it('rejects expired tokens', async () => {
+    vi.useFakeTimers();
+    try {
+      const token = await createSessionToken(testUser);
+      vi.advanceTimersByTime(8 * 24 * 60 * 60 * 1000);
+      const req = createRequest({ cookie: token });
+      const result = await verifyAuth(req);
+      expect(result.authenticated).toBe(false);
+      expect(result.error).toMatch(/invalid|expired/i);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rejects tokens signed with wrong secret', async () => {
+    const token = await createSessionToken(testUser);
+    process.env.AUTH_SECRET = 'a-completely-different-secret-32-chars!!';
+    _resetSecretCache();
+    try {
+      const req = createRequest({ cookie: token });
+      const result = await verifyAuth(req);
+      expect(result.authenticated).toBe(false);
+    } finally {
+      process.env.AUTH_SECRET = 'test-secret-for-vitest-minimum-32-chars';
+      _resetSecretCache();
+    }
+  });
+
+  it('rejects token with missing uid in payload', async () => {
+    const { SignJWT } = await import('jose');
+    const secret = new TextEncoder().encode('test-secret-for-vitest-minimum-32-chars');
+    const badToken = await new SignJWT({ username: 'test', name: 'test' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('7d')
+      .sign(secret);
+    const req = createRequest({ cookie: badToken });
+    const result = await verifyAuth(req);
+    expect(result.authenticated).toBe(false);
+    expect(result.error).toMatch(/malformed/i);
   });
 });

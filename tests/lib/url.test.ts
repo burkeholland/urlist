@@ -88,6 +88,37 @@ describe('normalizeUrl', () => {
     expect(result.valid).toBe(false);
     expect(result.error).toMatch(/maximum length/);
   });
+
+  it('rejects JAVASCRIPT: with mixed case', () => {
+    const result = normalizeUrl('JaVaScRiPt:alert(1)');
+    expect(result.valid).toBe(false);
+  });
+
+  it('rejects protocol with leading whitespace after trim', () => {
+    const result = normalizeUrl('  javascript:alert(1)');
+    expect(result.valid).toBe(false);
+  });
+
+  it('rejects https:// with no host', () => {
+    const result = normalizeUrl('https://');
+    expect(result.valid).toBe(false);
+  });
+
+  it('handles URLs with ports', () => {
+    const result = normalizeUrl('https://example.com:8080/path');
+    expect(result.valid).toBe(true);
+    expect(result.url).toContain(':8080');
+  });
+
+  it('handles URLs with authentication info', () => {
+    const result = normalizeUrl('https://user:pass@example.com');
+    expect(result.valid).toBe(true);
+  });
+
+  it('handles internationalized domain names', () => {
+    const result = normalizeUrl('https://例え.jp');
+    expect(result.valid).toBe(true);
+  });
 });
 
 describe('isValidHttpUrl', () => {
