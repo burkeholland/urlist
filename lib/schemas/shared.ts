@@ -4,7 +4,6 @@ import { z } from 'zod';
 
 export const MAX_URL_LENGTH = 2048;
 export const MAX_LINKS = 500;
-export const MAX_SLUG_LENGTH = 100;
 export const MAX_DESCRIPTION_LENGTH = 280;
 export const MAX_OG_TITLE_LENGTH = 200;
 export const MAX_OG_DESCRIPTION_LENGTH = 500;
@@ -66,6 +65,3 @@ export const UpdateListSchema = z.object({
   updatedAt: z.number(),
   links: z.array(UpdateLinkSchema).max(MAX_LINKS).optional(),
 });
-
-export type CreateListInput = z.infer<typeof CreateListSchema>;
-export type UpdateListInput = z.infer<typeof UpdateListSchema>;

@@ -112,5 +112,3 @@ export function SlugInput({ value, onChange, disabled }: SlugInputProps) {
     </div>
   );
 }
-
-export { type SlugValidationStatus };

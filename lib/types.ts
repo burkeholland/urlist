@@ -60,65 +60,6 @@ export interface OgMetadata {
   ogSiteName: string | null;
 }
 
-export interface ApiError {
-  error: {
-    code: string;
-    message: string;
-    retryAfter?: number;
-  };
-}
-
-export interface SlugValidationResult {
-  slug: string;
-  available: boolean;
-}
-
-export interface PublishRequest {
-  slug?: string;
-  description?: string;
-  links: {
-    url: string;
-    position: number;
-    pinned: boolean;
-    ogTitle: string | null;
-    ogDescription: string | null;
-    ogImage: string | null;
-    ogSiteName: string | null;
-  }[];
-}
-
-export interface PublishResponse {
-  listId: string;
-  slug: string;
-  publicUrl: string;
-  createdAt: number;
-}
-
-export interface UpdateRequest {
-  description?: string;
-  updatedAt: number;
-  links?: {
-    id?: string;
-    url: string;
-    position: number;
-    pinned: boolean;
-    ogTitle: string | null;
-    ogDescription: string | null;
-    ogImage: string | null;
-    ogSiteName: string | null;
-  }[];
-}
-
-export interface UpdateResponse {
-  listId: string;
-  updatedAt: number;
-}
-
-export interface DeleteResponse {
-  deleted: boolean;
-  listId: string;
-}
-
 export type SlugValidationStatus = 'idle' | 'checking' | 'valid' | 'invalid' | 'taken';
 
 // ── Analytics types ──
@@ -213,8 +154,3 @@ export interface TrackLinkClickPayload {
 }
 
 export type TrackEventPayload = TrackPageViewPayload | TrackLinkClickPayload;
-
-export interface TrackValidationErrorPayload {
-  field: 'url';
-  errorMessage: string;
-}
