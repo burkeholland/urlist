@@ -56,6 +56,8 @@ Open [http://localhost:3000](http://localhost:3000) to see the app.
 | `npm test` | Run tests |
 | `npm run test:watch` | Run tests in watch mode |
 
+Pull requests automatically run the test suite through GitHub Actions.
+
 ## Project Structure
 
 ```
