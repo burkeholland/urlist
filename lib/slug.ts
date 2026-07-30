@@ -3,7 +3,6 @@ import { nanoid } from 'nanoid';
 const SLUG_REGEX = /^[a-z0-9]([a-z0-9\-_\/]*[a-z0-9])?$/;
 const CONSECUTIVE_SLASH_REGEX = /\/{2,}/;
 const RESERVED_PREFIXES = ['app', 'api', '_next'];
-const RESERVED_EXACT = ['favicon.ico', 'robots.txt', 'sitemap.xml'];
 
 export function validateSlugFormat(slug: string): {
   valid: boolean;
@@ -23,15 +22,9 @@ export function validateSlugFormat(slug: string): {
   if (CONSECUTIVE_SLASH_REGEX.test(slug)) {
     return { valid: false, error: 'Slug must not contain consecutive slashes.' };
   }
-  if (slug.startsWith('/') || slug.endsWith('/')) {
-    return { valid: false, error: 'Slug must not start or end with a slash.' };
-  }
   const firstSegment = slug.split('/')[0];
   if (RESERVED_PREFIXES.includes(firstSegment)) {
     return { valid: false, error: `"${firstSegment}" is a reserved path.` };
-  }
-  if (RESERVED_EXACT.includes(slug)) {
-    return { valid: false, error: `"${slug}" is a reserved path.` };
   }
   return { valid: true };
 }

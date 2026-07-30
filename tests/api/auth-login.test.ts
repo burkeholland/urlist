@@ -25,6 +25,15 @@ describe('GET /api/auth/login', () => {
     expect(stateCookie).toBeDefined();
     expect(stateCookie).toContain('HttpOnly');
     expect(stateCookie).toContain('Max-Age=600');
+    expect(stateCookie).toContain('SameSite=lax');
+    expect(stateCookie).toContain('Path=/');
+  });
+
+  it('points the GitHub redirect at the callback URL derived from the request', async () => {
+    const req = new NextRequest('http://localhost:3000/api/auth/login');
+    const res = await GET(req);
+    const location = res.headers.get('Location')!;
+    expect(location).toContain('redirect_uri=' + encodeURIComponent('http://localhost:3000/api/auth/callback'));
   });
 
   it('includes state param matching cookie value', async () => {

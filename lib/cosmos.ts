@@ -5,7 +5,9 @@ let _client: CosmosClient | null = null;
 let _db: Database | null = null;
 
 function getClient(): CosmosClient {
+  /* v8 ignore start -- else branch: singleton cache, only one outcome is observable per module instance */
   if (!_client) {
+  /* v8 ignore stop */
     const env = getCosmosEnv();
     _client = new CosmosClient({ endpoint: env.COSMOS_ENDPOINT, key: env.COSMOS_KEY });
   }

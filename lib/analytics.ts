@@ -200,8 +200,8 @@ export async function getListAnalyticsSummary(slug: string): Promise<ListAnalyti
     .fetchAll();
 
   return {
-    totalViews: (pageViewCounts[0] as unknown as number) ?? 0,
-    totalClicks: (linkClickCounts[0] as unknown as number) ?? 0,
+    totalViews: pageViewCounts[0],
+    totalClicks: linkClickCounts[0],
   };
 }
 

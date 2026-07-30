@@ -42,6 +42,9 @@ describe('GET /api/lists/[listId]/analytics', () => {
     const req = new NextRequest('http://localhost:3000/api/lists/list123/analytics');
     const res = await GET(req, params);
     expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error.code).toBe('UNAUTHORIZED');
+    expect(body.error.message).toBe('Missing or invalid auth token.');
   });
 
   it('returns 404 when list not found', async () => {
@@ -49,6 +52,9 @@ describe('GET /api/lists/[listId]/analytics', () => {
     const req = new NextRequest('http://localhost:3000/api/lists/list123/analytics');
     const res = await GET(req, params);
     expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error.code).toBe('LIST_NOT_FOUND');
+    expect(body.error.message).toBe('No list exists with this ID.');
   });
 
   it('returns 403 when user does not own the list', async () => {
@@ -57,6 +63,9 @@ describe('GET /api/lists/[listId]/analytics', () => {
     const req = new NextRequest('http://localhost:3000/api/lists/list123/analytics');
     const res = await GET(req, params);
     expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error.code).toBe('FORBIDDEN');
+    expect(body.error.message).toBe('You are not the owner of this list.');
   });
 
   it('returns analytics data for owned list', async () => {
@@ -77,5 +86,11 @@ describe('GET /api/lists/[listId]/analytics', () => {
     const res = await GET(req, params);
     expect(res.status).toBe(200);
     expect(mockGetListAnalytics).toHaveBeenCalledWith('test', 'list123', 1000, 2000);
+  });
+
+  it('rethrows non-auth errors', async () => {
+    mockGetList.mockRejectedValue(new Error('db down'));
+    const req = new NextRequest('http://localhost:3000/api/lists/list123/analytics');
+    await expect(GET(req, params)).rejects.toThrow('db down');
   });
 });

@@ -32,6 +32,22 @@ describe('GET /api/lists', () => {
     vi.mocked(verifyAuth).mockResolvedValue({ authenticated: false } as any);
     const res = await json(await GET(new NextRequest('https://urlist.test/api/lists')));
     expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('UNAUTHORIZED');
+    expect(res.body.error.message).toBe('Sign in to view your lists.');
+  });
+
+  it('returns 401 when authenticated but uid is missing', async () => {
+    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: null } as any);
+    const res = await json(await GET(new NextRequest('https://urlist.test/api/lists')));
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('returns plain lists when includeStats is not exactly "true"', async () => {
+    const res = await json(await GET(new NextRequest('https://urlist.test/api/lists?includeStats=1')));
+    expect(res.status).toBe(200);
+    expect(res.body[0].stats).toBeUndefined();
+    expect(getListAnalyticsSummary).not.toHaveBeenCalled();
   });
 
   it("returns the user's lists when authenticated", async () => {
@@ -46,5 +62,12 @@ describe('GET /api/lists', () => {
     expect(res.status).toBe(200);
     expect(res.body[0].stats).toEqual({ totalViews: 3, totalClicks: 4 });
     expect(getListAnalyticsSummary).toHaveBeenCalledWith('s');
+  });
+
+  it('falls back to zero stats when summary fetch fails', async () => {
+    vi.mocked(getListAnalyticsSummary).mockRejectedValue(new Error('boom'));
+    const res = await json(await GET(new NextRequest('https://urlist.test/api/lists?includeStats=true')));
+    expect(res.status).toBe(200);
+    expect(res.body[0].stats).toEqual({ totalViews: 0, totalClicks: 0 });
   });
 });

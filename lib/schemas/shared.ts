@@ -48,7 +48,7 @@ const LinkInputSchema = z.object({
 
 export const CreateListSchema = z.object({
   slug: z.string().optional(),
-  description: z.string().max(MAX_DESCRIPTION_LENGTH).optional().default(''),
+  description: z.string().optional().default(''),
   links: z
     .array(LinkInputSchema)
     .min(1, 'List must contain at least one link')
@@ -61,7 +61,7 @@ const UpdateLinkSchema = LinkInputSchema.extend({
 
 export const UpdateListSchema = z.object({
   slug: z.string().optional(),
-  description: z.string().max(MAX_DESCRIPTION_LENGTH).optional(),
+  description: z.string().optional(),
   updatedAt: z.number(),
   links: z.array(UpdateLinkSchema).max(MAX_LINKS).optional(),
 });

@@ -43,7 +43,7 @@ export function getClientIp(request: NextRequest): string {
 const store = new Map<string, { count: number; windowKey: string; createdAt: number }>();
 
 // Periodic cleanup every 5 minutes
-setInterval(() => {
+export function _sweepStaleEntries(): void {
   const now = Math.floor(Date.now() / 1000);
   for (const [key, entry] of store) {
     // Remove entries older than 2 hours regardless of window size
@@ -51,7 +51,9 @@ setInterval(() => {
       store.delete(key);
     }
   }
-}, 5 * 60 * 1000).unref();
+}
+
+setInterval(_sweepStaleEntries, 5 * 60 * 1000).unref();
 
 export async function checkRateLimit(
   ip: string,

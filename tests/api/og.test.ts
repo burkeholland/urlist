@@ -27,13 +27,31 @@ describe('POST /api/og', () => {
 
   it('returns 429 when rate limited', async () => {
     vi.mocked(checkRateLimit).mockResolvedValue({ allowed: false, retryAfter: 60 });
-    const res = await json(await POST(req({ url: 'https://example.com' })));
+    const res = await POST(req({ url: 'https://example.com' }));
     expect(res.status).toBe(429);
+    expect(res.headers.get('Retry-After')).toBe('60');
+    const body = await res.json();
+    expect(body.error.code).toBe('RATE_LIMIT_EXCEEDED');
+    expect(body.error.message).toBe('Too many requests. Please try again later.');
+    expect(body.error.retryAfter).toBe(60);
   });
 
   it('returns 400 for missing or invalid URL', async () => {
     expect((await json(await POST(req({})))).status).toBe(400);
-    expect((await json(await POST(req({ url: '' })))).status).toBe(400);
+    const empty = await json(await POST(req({ url: '' })));
+    expect(empty.status).toBe(400);
+    expect(empty.body.error.code).toBe('INVALID_URL');
+    expect(empty.body.error.message).toBe('A valid URL is required.');
+  });
+
+  it('returns 400 for malformed JSON body', async () => {
+    const res = await json(await POST(new NextRequest('https://urlist.test/api/og', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{no',
+    })));
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('INVALID_URL');
   });
 
   it('returns OG metadata on success', async () => {

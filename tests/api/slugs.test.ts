@@ -24,14 +24,20 @@ describe('GET /api/slugs/[slug]', () => {
 
   it('returns 429 when rate limited', async () => {
     vi.mocked(checkRateLimit).mockResolvedValue({ allowed: false, retryAfter: 60 });
-    const res = await json(await GET(new NextRequest('https://urlist.test/api/slugs/s'), ctx('s')));
+    const res = await GET(new NextRequest('https://urlist.test/api/slugs/s'), ctx('s'));
     expect(res.status).toBe(429);
+    expect(res.headers.get('Retry-After')).toBe('60');
+    const body = await res.json();
+    expect(body.error.code).toBe('RATE_LIMIT_EXCEEDED');
+    expect(body.error.message).toBe('Too many requests. Please try again later.');
+    expect(body.error.retryAfter).toBe(60);
   });
 
   it('returns 400 for invalid slug format', async () => {
     const res = await json(await GET(new NextRequest('https://urlist.test/api/slugs/Bad'), ctx('Bad')));
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('INVALID_SLUG_FORMAT');
+    expect(res.body.error.message).toMatch(/lowercase/i);
   });
 
   it('returns available true when available', async () => {

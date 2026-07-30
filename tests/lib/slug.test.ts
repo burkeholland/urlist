@@ -27,22 +27,29 @@ describe('validateSlugFormat', () => {
   it('rejects slugs over 200 chars', () => {
     const result = validateSlugFormat('a'.repeat(201));
     expect(result.valid).toBe(false);
-    expect(result.error).toMatch(/200/);
+    expect(result.error).toBe('Slug must be 200 characters or fewer.');
+  });
+
+  it('accepts a slug of exactly 200 chars', () => {
+    expect(validateSlugFormat('a'.repeat(200)).valid).toBe(true);
   });
 
   it('rejects consecutive slashes', () => {
     const result = validateSlugFormat('a//b');
     expect(result.valid).toBe(false);
+    expect(result.error).toBe('Slug must not contain consecutive slashes.');
   });
 
   it('rejects leading slash', () => {
     const result = validateSlugFormat('/a');
     expect(result.valid).toBe(false);
+    expect(result.error).toMatch(/invalid characters/i);
   });
 
   it('rejects trailing slash', () => {
     const result = validateSlugFormat('a/');
     expect(result.valid).toBe(false);
+    expect(result.error).toMatch(/invalid characters/i);
   });
 
   it('rejects reserved prefix "app"', () => {
@@ -56,7 +63,7 @@ describe('validateSlugFormat', () => {
     expect(result.valid).toBe(false);
   });
 
-  it('rejects reserved exact "favicon.ico"', () => {
+  it('rejects dotted names like "favicon.ico" (invalid characters)', () => {
     const result = validateSlugFormat('favicon.ico');
     expect(result.valid).toBe(false);
   });
@@ -65,6 +72,29 @@ describe('validateSlugFormat', () => {
     expect(validateSlugFormat('my list').valid).toBe(false);
     expect(validateSlugFormat('my@list').valid).toBe(false);
     expect(validateSlugFormat('my#list').valid).toBe(false);
+  });
+
+  it('accepts single-character slugs', () => {
+    expect(validateSlugFormat('a')).toEqual({ valid: true });
+    expect(validateSlugFormat('5')).toEqual({ valid: true });
+  });
+
+  it('rejects single invalid characters', () => {
+    expect(validateSlugFormat('-').valid).toBe(false);
+    expect(validateSlugFormat('_').valid).toBe(false);
+    expect(validateSlugFormat('/').valid).toBe(false);
+  });
+
+  it('rejects multi-char slugs ending with a hyphen', () => {
+    expect(validateSlugFormat('ab-').valid).toBe(false);
+  });
+
+  it('uses the reserved-prefix list exactly', async () => {
+    expect(validateSlugFormat('app').valid).toBe(false);
+    expect(validateSlugFormat('api').valid).toBe(false);
+    expect(validateSlugFormat('_next').valid).toBe(false);
+    expect(validateSlugFormat('apple').valid).toBe(true);
+    expect(validateSlugFormat('app2').valid).toBe(true);
   });
 
   it('allows app as a non-first segment', () => {

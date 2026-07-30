@@ -16,8 +16,10 @@ describe('POST /api/auth/logout', () => {
     const setCookies = res.headers.getSetCookie();
     const sessionCookie = setCookies.find(c => c.startsWith('session='));
     expect(sessionCookie).toBeDefined();
+    expect(sessionCookie).toMatch(/^session=;/);
     expect(sessionCookie).toContain('Max-Age=0');
     expect(sessionCookie).toContain('HttpOnly');
     expect(sessionCookie).toContain('Path=/');
+    expect(sessionCookie).toContain('SameSite=lax');
   });
 });

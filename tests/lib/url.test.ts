@@ -28,17 +28,41 @@ describe('normalizeUrl', () => {
   it('rejects empty string', () => {
     const result = normalizeUrl('');
     expect(result.valid).toBe(false);
+    expect(result.error).toBe('URL is required.');
   });
 
   it('rejects whitespace-only', () => {
     const result = normalizeUrl('   ');
     expect(result.valid).toBe(false);
+    expect(result.error).toBe('URL is required.');
+  });
+
+  it('accepts a URL at exactly the 2048-char limit', () => {
+    const url = 'https://example.com/' + 'a'.repeat(2048 - 'https://example.com/'.length);
+    const result = normalizeUrl(url);
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects a bare domain that ends with a dash before the TLD', () => {
+    // The second label group requires ending in alphanumeric
+    const result = normalizeUrl('a-.com');
+    expect(result.valid).toBe(false);
+  });
+
+  it('rejects inputs that partially match a domain (regex must be anchored)', () => {
+    expect(normalizeUrl('not a url but example.com!').valid).toBe(false);
+    expect(normalizeUrl('see example.com/path here').valid).toBe(false);
+  });
+
+  it('requires a dot-separated TLD of at least two letters', () => {
+    expect(normalizeUrl('example.c').valid).toBe(false);
+    expect(normalizeUrl('example').valid).toBe(false);
   });
 
   it('blocks javascript: protocol', () => {
     const result = normalizeUrl('javascript:alert(1)');
     expect(result.valid).toBe(false);
-    expect(result.error).toMatch(/not allowed/i);
+    expect(result.error).toBe('"javascript:" URLs are not allowed.');
   });
 
   it('blocks data: protocol', () => {
@@ -69,6 +93,7 @@ describe('normalizeUrl', () => {
   it('rejects random gibberish', () => {
     const result = normalizeUrl('not a url at all!');
     expect(result.valid).toBe(false);
+    expect(result.error).toBe('Invalid URL format.');
   });
 
   it('trims whitespace', () => {
@@ -86,7 +111,7 @@ describe('normalizeUrl', () => {
   it('rejects URLs exceeding 2048 chars', () => {
     const result = normalizeUrl('https://example.com/' + 'a'.repeat(2040));
     expect(result.valid).toBe(false);
-    expect(result.error).toMatch(/maximum length/);
+    expect(result.error).toBe('URL exceeds maximum length of 2048 characters.');
   });
 
   it('rejects JAVASCRIPT: with mixed case', () => {
@@ -102,6 +127,13 @@ describe('normalizeUrl', () => {
   it('rejects https:// with no host', () => {
     const result = normalizeUrl('https://');
     expect(result.valid).toBe(false);
+    expect(result.error).toBe('Invalid URL format.');
+  });
+
+  it('rejects URLs with disallowed protocols not in the blocklist', () => {
+    const result = normalizeUrl('custom://example.com');
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe('Only http and https URLs are allowed.');
   });
 
   it('handles URLs with ports', () => {
@@ -118,6 +150,11 @@ describe('normalizeUrl', () => {
   it('handles internationalized domain names', () => {
     const result = normalizeUrl('https://例え.jp');
     expect(result.valid).toBe(true);
+  });
+  it('rejects URLs with disallowed protocols not in the blocklist', () => {
+    const result = normalizeUrl('custom://example.com');
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe('Only http and https URLs are allowed.');
   });
 });
 

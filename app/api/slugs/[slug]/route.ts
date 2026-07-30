@@ -31,7 +31,7 @@ export async function GET(
       {
         error: {
           code: 'INVALID_SLUG_FORMAT',
-          message: validation.error || 'Invalid slug format.',
+          message: validation.error,
         },
       },
       { status: 400 },

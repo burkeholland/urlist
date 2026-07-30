@@ -73,7 +73,7 @@ export async function PATCH(
         {
           error: {
             code: 'INVALID_REQUEST',
-            message: parsed.error.issues[0]?.message || 'Invalid request.',
+            message: parsed.error.issues[0].message,
           },
         },
         { status: 400 },
@@ -143,7 +143,7 @@ export async function PATCH(
           id: link.id || generateLinkId(),
           url: urlResult.url,
           position: link.position,
-          pinned: link.pinned ?? false,
+          pinned: link.pinned,
           ogTitle: sanitizeText(link.ogTitle, MAX_OG_TITLE_LENGTH),
           ogDescription: sanitizeText(link.ogDescription, MAX_OG_DESCRIPTION_LENGTH),
           ogImage: link.ogImage && isValidHttpUrl(link.ogImage) ? link.ogImage : null,

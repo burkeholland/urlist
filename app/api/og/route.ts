@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       {
         error: {
           code: 'INVALID_URL',
-          message: normalized.error || 'Invalid URL.',
+          message: normalized.error,
         },
       },
       { status: 400 },

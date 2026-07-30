@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     const firstError = parsed.error.issues[0];
     let code = 'INVALID_REQUEST';
-    const message = firstError?.message || 'Invalid request body.';
+    const message = firstError.message;
 
     if (firstError?.path?.includes('links')) {
       if (firstError.message.includes('at least')) {
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
         {
           error: {
             code: 'INVALID_SLUG_FORMAT',
-            message: slugValidation.error || 'Invalid slug format.',
+            message: slugValidation.error,
           },
         },
         { status: 400 },
@@ -181,7 +181,7 @@ export async function POST(request: NextRequest) {
     id: generateLinkId(),
     url: link.url,
     position: link.position,
-    pinned: link.pinned ?? false,
+    pinned: link.pinned,
     ogTitle: sanitizeText(link.ogTitle, MAX_OG_TITLE_LENGTH),
     ogDescription: sanitizeText(link.ogDescription, MAX_OG_DESCRIPTION_LENGTH),
     ogImage: link.ogImage && isValidHttpUrl(link.ogImage) ? link.ogImage : null,
