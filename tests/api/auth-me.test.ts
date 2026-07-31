@@ -20,7 +20,7 @@ describe('GET /api/auth/me', () => {
   });
 
   it('returns user when authenticated', async () => {
-    const user = { uid: 'u1', login: 'octo', name: 'Octo', avatarUrl: 'https://example.com/a.png' };
+    const user = { uid: 'u1', username: 'octo', name: 'Octo', avatar: 'https://example.com/a.png' };
     vi.mocked(getSessionUser).mockResolvedValue(user);
     const res = await json(await GET(new NextRequest('https://urlist.test/api/auth/me')));
     expect(res.status).toBe(200);

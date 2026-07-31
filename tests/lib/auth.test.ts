@@ -91,7 +91,8 @@ describe('verifyAuth', () => {
 
   it('accepts a case-insensitive Bearer scheme', async () => {
     const token = await createSessionToken(testUser);
-    const req = createRequest({ bearer: token, scheme: 'bearer' });
+    const headers = new Headers({ Authorization: `bearer ${token}` });
+    const req = new NextRequest('http://localhost:3000/api/test', { headers });
     const result = await verifyAuth(req);
     expect(result.authenticated).toBe(true);
   });
