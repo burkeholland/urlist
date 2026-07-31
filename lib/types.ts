@@ -8,7 +8,7 @@ export interface ListRecord {
   updatedAt: number;
 }
 
-export interface LinkRecord {
+interface LinkRecord {
   url: string;
   position: number;
   pinned: boolean;
@@ -64,7 +64,7 @@ export type SlugValidationStatus = 'idle' | 'checking' | 'valid' | 'invalid' | '
 
 // ── Analytics types ──
 
-export type AnalyticsEventType = 'pageView' | 'linkClick';
+type AnalyticsEventType = 'pageView' | 'linkClick';
 
 export interface AnalyticsEvent {
   id: string;
@@ -139,7 +139,7 @@ export interface GlobalAnalytics {
   topLists: ListPerformance[];
 }
 
-export interface TrackPageViewPayload {
+interface TrackPageViewPayload {
   type: 'pageView';
   referrer?: string;
   utmSource?: string;
@@ -147,7 +147,7 @@ export interface TrackPageViewPayload {
   utmCampaign?: string;
 }
 
-export interface TrackLinkClickPayload {
+interface TrackLinkClickPayload {
   type: 'linkClick';
   linkId: string;
   referrer?: string;
