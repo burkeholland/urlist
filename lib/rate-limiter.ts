@@ -12,7 +12,6 @@ export const RATE_LIMITS = {
   publishAuthenticated: { endpoint: 'publish-auth', limit: 100, windowSeconds: 3600 },
   ogScrape: { endpoint: 'og-scrape', limit: 60, windowSeconds: 3600 },
   slugCheck: { endpoint: 'slug-check', limit: 120, windowSeconds: 3600 },
-  validationError: { endpoint: 'validation-error', limit: 60, windowSeconds: 3600 },
 } satisfies Record<string, RateLimitConfig>;
 
 function hashIp(ip: string): string {

@@ -57,17 +57,16 @@ function loadDraft(listId?: string): Draft | null {
   }
 }
 
-function saveDraft(draft: Draft, listId?: string): boolean {
-  if (typeof window === 'undefined') return true;
+function saveDraft(draft: Draft, listId?: string): void {
+  if (typeof window === 'undefined') return;
 
   try {
     const key = getDraftKey(listId);
     // Strip transient ogLoading flag before persisting
     const cleanLinks = draft.links.map(({ ogLoading: _, ...rest }) => rest);
     localStorage.setItem(key, JSON.stringify({ ...draft, links: cleanLinks, savedAt: Date.now() }));
-    return true;
   } catch {
-    return false;
+    return;
   }
 }
 
@@ -89,7 +88,6 @@ export function useDraft(listId?: string) {
     links: [],
     loaded: false,
   });
-  const [saveError, setSaveError] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load draft from localStorage after hydration to avoid server/client mismatch
@@ -125,8 +123,7 @@ export function useDraft(listId?: string) {
     }
 
     saveTimerRef.current = setTimeout(() => {
-      const ok = saveDraft({ slug, description, links, savedAt: Date.now() }, listId);
-      setSaveError(!ok);
+      saveDraft({ slug, description, links, savedAt: Date.now() }, listId);
     }, SAVE_DEBOUNCE_MS);
 
     return () => {
@@ -173,7 +170,6 @@ export function useDraft(listId?: string) {
     links,
     setLinks,
     loaded,
-    saveError,
     addLink,
     updateLink,
     removeLink,

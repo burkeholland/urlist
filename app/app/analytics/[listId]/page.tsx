@@ -388,8 +388,6 @@ function formatNumber(n: number): string {
 }
 
 function renderChart(dailyViews: { date: string; views: number; uniqueVisitors: number }[]) {
-  if (dailyViews.length === 0) return null;
-
   const maxViews = Math.max(...dailyViews.map((d) => d.views), 1);
   const width = 580;
   const height = 170;
