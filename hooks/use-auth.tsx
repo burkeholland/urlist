@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useContext, createContext, useCallback, type ReactNode } from 'react';
 
-export interface SessionUser {
+interface SessionUser {
   uid: string;
   username: string;
   name: string;

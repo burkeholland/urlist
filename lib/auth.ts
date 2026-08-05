@@ -29,14 +29,14 @@ const JwtPayloadSchema = z.object({
   avatar: z.string().max(2048).optional().default(''),
 });
 
-export interface AuthUser {
+interface AuthUser {
   uid: string;
   username: string;
   name: string;
   avatar: string;
 }
 
-export interface AuthResult {
+interface AuthResult {
   authenticated: boolean;
   uid: string | null;
   error?: string;
