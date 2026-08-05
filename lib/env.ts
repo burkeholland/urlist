@@ -15,10 +15,6 @@ const GitHubEnvSchema = z.object({
   GITHUB_CLIENT_SECRET: z.string().min(1, 'GITHUB_CLIENT_SECRET is required'),
 });
 
-export type CosmosEnv = z.infer<typeof CosmosEnvSchema>;
-export type AuthEnv = z.infer<typeof AuthEnvSchema>;
-export type GitHubEnv = z.infer<typeof GitHubEnvSchema>;
-
 function makeEnvGetter<T>(schema: z.ZodType<T>, label: string): () => T {
   let cached: T | null = null;
   const getter = () => {

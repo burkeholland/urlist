@@ -308,7 +308,7 @@ describe('rtdb', () => {
         const c = db.container(name);
         return {
           ...c,
-          item: (id: string) => ({
+          item: () => ({
             delete: vi.fn(async () => { throw new Error('gone'); }),
           }),
         };
@@ -360,7 +360,7 @@ describe('rtdb', () => {
         if (failingDeletes.has(name)) {
           return {
             ...c,
-            item: (id: string) => ({
+            item: () => ({
               delete: vi.fn(async () => { throw new Error(`${name} delete failed`); }),
             }),
           };
@@ -393,7 +393,7 @@ describe('rtdb', () => {
         if (name === 'userLists' || name === 'lists') {
           return {
             ...c,
-            item: (id: string) => ({
+            item: () => ({
               delete: vi.fn(async () => { throw new Error(`${name} down`); }),
             }),
           };
