@@ -32,7 +32,10 @@ describe('getClientIp', () => {
 
 describe('checkRateLimit', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
+    // Pin to a fixed instant that sits well inside any window bucket used below
+    // (1h and 10h windows both divide this timestamp without a nearby boundary),
+    // so advanceTimersByTime can never roll the window mid-test.
+    vi.useFakeTimers({ now: new Date('2024-01-01T05:00:00Z') });
   });
 
   afterEach(() => {
