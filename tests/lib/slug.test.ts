@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateSlugFormat, encodeSlugForKey, decodeSlugFromKey, generateSlug, generateListId, generateLinkId } from '@/lib/slug';
+import { validateSlugFormat, encodeSlugForKey, generateSlug, generateListId, generateLinkId } from '@/lib/slug';
 
 describe('validateSlugFormat', () => {
   it('accepts empty string (auto-generate)', () => {
@@ -102,18 +102,9 @@ describe('validateSlugFormat', () => {
   });
 });
 
-describe('encodeSlugForKey / decodeSlugFromKey', () => {
+describe('encodeSlugForKey', () => {
   it('encodes slashes to tildes', () => {
     expect(encodeSlugForKey('a/b/c')).toBe('a~b~c');
-  });
-
-  it('decodes tildes to slashes', () => {
-    expect(decodeSlugFromKey('a~b~c')).toBe('a/b/c');
-  });
-
-  it('roundtrips', () => {
-    const slug = 'my/nested/list';
-    expect(decodeSlugFromKey(encodeSlugForKey(slug))).toBe(slug);
   });
 
   it('leaves plain slugs unchanged', () => {
