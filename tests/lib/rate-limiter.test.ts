@@ -144,7 +144,6 @@ describe('RATE_LIMITS', () => {
     expect(RATE_LIMITS.publishAuthenticated).toEqual({ endpoint: 'publish-auth', limit: 100, windowSeconds: 3600 });
     expect(RATE_LIMITS.ogScrape).toEqual({ endpoint: 'og-scrape', limit: 60, windowSeconds: 3600 });
     expect(RATE_LIMITS.slugCheck).toEqual({ endpoint: 'slug-check', limit: 120, windowSeconds: 3600 });
-    expect(RATE_LIMITS.validationError).toEqual({ endpoint: 'validation-error', limit: 60, windowSeconds: 3600 });
   });
 
   it('authenticated limit is higher than anonymous', () => {

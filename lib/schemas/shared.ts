@@ -4,7 +4,6 @@ import { z } from 'zod';
 
 export const MAX_URL_LENGTH = 2048;
 export const MAX_LINKS = 500;
-export const MAX_DESCRIPTION_LENGTH = 280;
 export const MAX_OG_TITLE_LENGTH = 200;
 export const MAX_OG_DESCRIPTION_LENGTH = 500;
 export const MAX_OG_SITE_NAME_LENGTH = 100;

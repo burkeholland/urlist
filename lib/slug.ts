@@ -34,11 +34,6 @@ export function encodeSlugForKey(slug: string): string {
   return slug.replace(/\//g, '~');
 }
 
-// Decode RTDB key back to slug (~ -> /)
-export function decodeSlugFromKey(key: string): string {
-  return key.replace(/~/g, '/');
-}
-
 // Generate an 8-character URL-safe auto-slug
 export function generateSlug(): string {
   return nanoid(8).toLowerCase();
