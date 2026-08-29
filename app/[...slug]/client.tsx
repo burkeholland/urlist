@@ -38,20 +38,6 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
     setPublicUrl(`${window.location.origin}/${slug}`);
   }, [slug]);
 
-  // Store in recent publishes localStorage — only once publicUrl is a full absolute URL
-  useEffect(() => {
-    if (justPublished && publicUrl) {
-      try {
-        const key = 'urlist-recent-publishes';
-        const existing = JSON.parse(localStorage.getItem(key) || '[]') as string[];
-        const updated = [publicUrl, ...existing.filter((u) => u !== publicUrl)].slice(0, 10);
-        localStorage.setItem(key, JSON.stringify(updated));
-      } catch {
-        // ignore
-      }
-    }
-  }, [justPublished, publicUrl]);
-
   // Track page view on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
