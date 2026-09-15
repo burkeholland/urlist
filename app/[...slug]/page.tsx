@@ -1,8 +1,11 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { unstable_noStore as noStore } from 'next/cache';
-import { getListWithLinks, resolveSlug } from '@/lib/rtdb';
+import { cookies } from 'next/headers';
+import { cookieStoreHasListAccess, listRequiresPassword } from '@/lib/list-access';
+import { getList, getListPasswordAccess, getListWithLinks, resolveSlug } from '@/lib/rtdb';
 import { PublicListClient } from './client';
+import { ProtectedListUnlock } from './unlock-client';
 
 // Force dynamic rendering (no caching)
 export const dynamic = 'force-dynamic';
@@ -23,17 +26,40 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     return { title: 'List Not Found — The Urlist' };
   }
 
-  const list = await getListWithLinks(listId);
+  const list = await getList(listId);
   if (!list) {
     return { title: 'List Not Found — The Urlist' };
   }
 
+  if (list.visibility === 'password-protected') {
+    return {
+      title: 'Password required — The Urlist',
+      description: 'This link collection is password protected.',
+      robots: { index: false, follow: false },
+      openGraph: {
+        title: 'Password required — The Urlist',
+        description: 'This link collection is password protected.',
+        url: `/${slug}`,
+      },
+    };
+  }
+
+  const listWithLinks = await getListWithLinks(listId);
+  if (!listWithLinks) {
+    return { title: 'List Not Found — The Urlist' };
+  }
+
+  const robots = list.visibility === 'unlisted'
+    ? { index: false, follow: false }
+    : undefined;
+
   return {
     title: `${slug} — The Urlist`,
-    description: list.description || `A curated list of ${list.links.length} links`,
+    description: list.description || `A curated list of ${listWithLinks.links.length} links`,
+    robots,
     openGraph: {
       title: `${slug} — The Urlist`,
-      description: list.description || `A curated list of ${list.links.length} links`,
+      description: list.description || `A curated list of ${listWithLinks.links.length} links`,
       url: `/${slug}`,
     },
   };
@@ -52,10 +78,29 @@ export default async function PublicListPage({ params, searchParams }: PageProps
     notFound();
   }
 
-  const list = await getListWithLinks(listId);
-  if (!list) {
+  const list = await getList(listId);
+  const passwordAccess = list ? await getListPasswordAccess(listId) : null;
+  if (!list || !passwordAccess) {
     notFound();
   }
 
-  return <PublicListClient list={list} slug={slug} justPublished={justPublished} />;
+  if (listRequiresPassword(list)) {
+    const cookieStore = await cookies();
+    const hasAccess = await cookieStoreHasListAccess(
+      cookieStore,
+      listId,
+      list,
+      passwordAccess.passwordUpdatedAt,
+    );
+    if (!hasAccess) {
+      return <ProtectedListUnlock slug={slug} />;
+    }
+  }
+
+  const listWithLinks = await getListWithLinks(listId);
+  if (!listWithLinks) {
+    notFound();
+  }
+
+  return <PublicListClient list={listWithLinks} slug={slug} justPublished={justPublished} />;
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { recordPageView, recordLinkClick, hashVisitorId } from '@/lib/analytics';
-import { getList } from '@/lib/rtdb';
+import { requestHasListAccess } from '@/lib/list-access';
+import { getList, getListPasswordAccess } from '@/lib/rtdb';
 import { getClientIp, checkRateLimit, RATE_LIMITS } from '@/lib/rate-limiter';
 import { log } from '@/lib/logger';
 import type { TrackEventPayload } from '@/lib/types';
@@ -13,11 +14,16 @@ export async function POST(
 
   // Verify list exists
   const list = await getList(listId);
-  if (!list) {
+  const passwordAccess = list ? await getListPasswordAccess(listId) : null;
+  if (!list || !passwordAccess) {
     return NextResponse.json(
       { error: { code: 'LIST_NOT_FOUND', message: 'No list exists with this ID.' } },
       { status: 404 },
     );
+  }
+
+  if (!(await requestHasListAccess(request, listId, list, passwordAccess.passwordUpdatedAt))) {
+    return new NextResponse(null, { status: 204 });
   }
 
   // Rate limit per IP

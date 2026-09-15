@@ -11,6 +11,7 @@ import { reserveSlug, cleanupFailedPublish, createList, getUserListIds, getLists
 import { getListAnalyticsSummary } from '@/lib/analytics';
 import { checkRateLimit, getClientIp, RATE_LIMITS } from '@/lib/rate-limiter';
 import { log } from '@/lib/logger';
+import { hashListPassword } from '@/lib/password';
 import {
   CreateListSchema,
   sanitizeText,
@@ -93,9 +94,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: { code, message } }, { status: 400 });
   }
 
-  const { description, links } = parsed.data;
+  const { description, links, visibility, password } = parsed.data;
   const isCustomSlug = !!parsed.data.slug;
   let slug = parsed.data.slug || '';
+
+  if (visibility !== 'public' && !authResult.authenticated) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'AUTH_REQUIRED_FOR_VISIBILITY',
+          message: 'Sign in to publish unlisted or password-protected lists.',
+        },
+      },
+      { status: 401 },
+    );
+  }
 
   // Validate description
   if (description.length > 280) {
@@ -189,12 +202,20 @@ export async function POST(request: NextRequest) {
   }));
 
   // Write to database — clean up all artifacts if createList fails
+  const passwordHash = visibility === 'password-protected' && password
+    ? await hashListPassword(password)
+    : null;
+  const passwordUpdatedAt = passwordHash ? Date.now() : null;
+
   try {
     await createList({
       listId,
       slug,
       description: description.slice(0, 280),
-      ownerId: authResult.uid,
+      ownerId: authResult.uid ?? null,
+      visibility,
+      passwordHash,
+      passwordUpdatedAt,
       links: sanitizedLinks,
     });
   } catch (error) {
@@ -216,12 +237,13 @@ export async function POST(request: NextRequest) {
       listId,
       slug,
       linkCount: links.length,
+      visibility,
       anonymous: !authResult.authenticated,
     },
   });
 
   return NextResponse.json(
-    { listId, slug, publicUrl: `/${slug}`, createdAt: Date.now() },
+    { listId, slug, publicUrl: `/${slug}`, visibility, createdAt: Date.now() },
     { status: 201 },
   );
 }

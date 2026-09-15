@@ -3,6 +3,8 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 
 const COOKIE_NAME = 'session';
+export const LIST_ACCESS_MAX_AGE_SECONDS = 2 * 60 * 60;
+const LIST_ACCESS_COOKIE_PREFIX = 'list_access_';
 
 // Lazy-initialized secret — throws on first use if AUTH_SECRET is missing
 let _secret: Uint8Array | null = null;
@@ -29,6 +31,11 @@ const JwtPayloadSchema = z.object({
   avatar: z.string().max(2048).optional().default(''),
 });
 
+const ListAccessPayloadSchema = z.object({
+  listId: z.string().min(1).max(128),
+  passwordUpdatedAt: z.number().int().nonnegative(),
+});
+
 export interface AuthUser {
   uid: string;
   username: string;
@@ -50,16 +57,7 @@ export async function createSessionToken(user: AuthUser): Promise<string> {
     .sign(getSecret());
 }
 
-export async function verifyAuth(request: NextRequest): Promise<AuthResult> {
-  const cookieToken = request.cookies.get(COOKIE_NAME)?.value;
-  const authHeader = request.headers.get('Authorization');
-  const headerToken = authHeader?.match(/^Bearer\s+(.+)$/i)?.[1];
-  const token = cookieToken || headerToken;
-
-  if (!token) {
-    return { authenticated: false, uid: null };
-  }
-
+export async function verifySessionToken(token: string): Promise<AuthResult> {
   try {
     const { payload } = await jwtVerify(token, getSecret());
     const parsed = JwtPayloadSchema.safeParse(payload);
@@ -70,6 +68,19 @@ export async function verifyAuth(request: NextRequest): Promise<AuthResult> {
   } catch {
     return { authenticated: false, uid: null, error: 'Invalid or expired session.' };
   }
+}
+
+export async function verifyAuth(request: NextRequest): Promise<AuthResult> {
+  const cookieToken = request.cookies.get(COOKIE_NAME)?.value;
+  const authHeader = request.headers.get('Authorization');
+  const headerToken = authHeader?.match(/^Bearer\s+(.+)$/i)?.[1];
+  const token = cookieToken || headerToken;
+
+  if (!token) {
+    return { authenticated: false, uid: null };
+  }
+
+  return verifySessionToken(token);
 }
 
 export async function getSessionUser(request: NextRequest): Promise<AuthUser | null> {
@@ -94,6 +105,42 @@ export async function getSessionUser(request: NextRequest): Promise<AuthUser | n
 export function requireAuth(authResult: AuthResult): asserts authResult is AuthResult & { authenticated: true; uid: string } {
   if (!authResult.authenticated) {
     throw new AuthError('UNAUTHORIZED', 'Missing or invalid auth token.');
+  }
+}
+
+export function getListAccessCookieName(listId: string): string {
+  return `${LIST_ACCESS_COOKIE_PREFIX}${listId.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+}
+
+export async function createListAccessToken(params: {
+  listId: string;
+  passwordUpdatedAt: number;
+}): Promise<string> {
+  return new SignJWT({
+    listId: params.listId,
+    passwordUpdatedAt: params.passwordUpdatedAt,
+  })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime(`${LIST_ACCESS_MAX_AGE_SECONDS}s`)
+    .sign(getSecret());
+}
+
+export async function verifyListAccessToken(
+  token: string | undefined,
+  listId: string,
+  passwordUpdatedAt: number,
+): Promise<boolean> {
+  if (!token) return false;
+
+  try {
+    const { payload } = await jwtVerify(token, getSecret());
+    const parsed = ListAccessPayloadSchema.safeParse(payload);
+    return parsed.success
+      && parsed.data.listId === listId
+      && parsed.data.passwordUpdatedAt === passwordUpdatedAt;
+  } catch {
+    return false;
   }
 }
 

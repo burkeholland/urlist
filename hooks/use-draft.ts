@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { z } from 'zod';
-import type { Draft, DraftLink } from '@/lib/types';
+import type { Draft, DraftLink, ListVisibility } from '@/lib/types';
 
 const DRAFT_KEY = 'urlist-draft';
 const DRAFT_STALENESS_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -23,6 +23,7 @@ const DraftLinkSchema = z.object({
 const DraftSchema = z.object({
   slug: z.string(),
   description: z.string(),
+  visibility: z.enum(['public', 'unlisted', 'password-protected']).optional().default('public'),
   links: z.array(DraftLinkSchema),
   savedAt: z.number(),
 });
@@ -63,7 +64,16 @@ function saveDraft(draft: Draft, listId?: string): boolean {
   try {
     const key = getDraftKey(listId);
     // Strip transient ogLoading flag before persisting
-    const cleanLinks = draft.links.map(({ ogLoading: _, ...rest }) => rest);
+    const cleanLinks = draft.links.map((link) => ({
+      id: link.id,
+      url: link.url,
+      position: link.position,
+      pinned: link.pinned,
+      ogTitle: link.ogTitle,
+      ogDescription: link.ogDescription,
+      ogImage: link.ogImage,
+      ogSiteName: link.ogSiteName,
+    }));
     localStorage.setItem(key, JSON.stringify({ ...draft, links: cleanLinks, savedAt: Date.now() }));
     return true;
   } catch {
@@ -83,9 +93,10 @@ function clearDraft(listId?: string): void {
 }
 
 export function useDraft(listId?: string) {
-  const [state, setState] = useState<{ slug: string; description: string; links: DraftLink[]; loaded: boolean }>({
+  const [state, setState] = useState<{ slug: string; description: string; visibility: ListVisibility; links: DraftLink[]; loaded: boolean }>({
     slug: '',
     description: '',
+    visibility: 'public',
     links: [],
     loaded: false,
   });
@@ -96,13 +107,14 @@ export function useDraft(listId?: string) {
   useEffect(() => {
     const draft = loadDraft(listId);
     if (draft) {
-      setState((prev) => ({ ...prev, slug: draft.slug, description: draft.description, links: draft.links, loaded: true }));
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- draft hydration must happen after localStorage is available client-side
+      setState((prev) => ({ ...prev, slug: draft.slug, description: draft.description, visibility: draft.visibility, links: draft.links, loaded: true }));
     } else {
       setState((prev) => ({ ...prev, loaded: true }));
     }
   }, [listId]);
 
-  const { slug, description, links, loaded } = state;
+  const { slug, description, visibility, links, loaded } = state;
 
   const setSlug = useCallback((val: string | ((prev: string) => string)) => {
     setState((prev) => ({ ...prev, slug: typeof val === 'function' ? val(prev.slug) : val }));
@@ -110,6 +122,10 @@ export function useDraft(listId?: string) {
 
   const setDescription = useCallback((val: string | ((prev: string) => string)) => {
     setState((prev) => ({ ...prev, description: typeof val === 'function' ? val(prev.description) : val }));
+  }, []);
+
+  const setVisibility = useCallback((val: ListVisibility | ((prev: ListVisibility) => ListVisibility)) => {
+    setState((prev) => ({ ...prev, visibility: typeof val === 'function' ? val(prev.visibility) : val }));
   }, []);
 
   const setLinks = useCallback((val: DraftLink[] | ((prev: DraftLink[]) => DraftLink[])) => {
@@ -125,7 +141,7 @@ export function useDraft(listId?: string) {
     }
 
     saveTimerRef.current = setTimeout(() => {
-      const ok = saveDraft({ slug, description, links, savedAt: Date.now() }, listId);
+      const ok = saveDraft({ slug, description, visibility, links, savedAt: Date.now() }, listId);
       setSaveError(!ok);
     }, SAVE_DEBOUNCE_MS);
 
@@ -134,14 +150,15 @@ export function useDraft(listId?: string) {
         clearTimeout(saveTimerRef.current);
       }
     };
-  }, [slug, description, links, listId, loaded]);
+  }, [slug, description, visibility, links, listId, loaded]);
 
   const clearCurrentDraft = useCallback(() => {
     clearDraft(listId);
     setSlug('');
     setDescription('');
+    setVisibility('public');
     setLinks([]);
-  }, [listId, setSlug, setDescription, setLinks]);
+  }, [listId, setSlug, setDescription, setVisibility, setLinks]);
 
   const addLink = useCallback((link: DraftLink) => {
     setLinks((prev) => [...prev, { ...link, position: prev.length, pinned: false }]);
@@ -170,6 +187,8 @@ export function useDraft(listId?: string) {
     setSlug,
     description,
     setDescription,
+    visibility,
+    setVisibility,
     links,
     setLinks,
     loaded,
