@@ -3,16 +3,26 @@ import { getDb } from '@/lib/cosmos';
 import {
   cleanupFailedPublish,
   createList,
+  acceptInvite,
   deleteList,
   deleteSlug,
+  createInvite,
   getLinks,
   getList,
+  getListMembership,
+  getListMemberships,
   getListsWithLinks,
   getListWithLinks,
   getUserListIds,
+  getUserListMemberships,
   isSlugAvailable,
+  listInvites,
+  removeListMembership,
   reserveSlug,
   resolveSlug,
+  revokeInvite,
+  rotateInvite,
+  updateListMembershipRole,
   updateList,
 } from '@/lib/rtdb';
 
@@ -39,9 +49,16 @@ function createMockDb(seed: Record<string, Doc[]> = {}) {
           store(name).delete(id);
           return {};
         }),
-        patch: vi.fn(async (ops: { path: string; value: unknown }[]) => {
+        patch: vi.fn(async (body: { op?: string; path: string; value?: unknown }[] | { operations: { op?: string; path: string; value?: unknown }[] }) => {
           const doc = store(name).get(id);
-          for (const op of ops) doc![op.path.slice(1)] = op.value;
+          const ops = Array.isArray(body) ? body : body.operations;
+          for (const op of ops) {
+            if (op.op === 'remove') {
+              delete doc![op.path.slice(1)];
+            } else {
+              doc![op.path.slice(1)] = op.value;
+            }
+          }
           return { resource: doc };
         }),
       }),
@@ -61,6 +78,8 @@ function createMockDb(seed: Record<string, Doc[]> = {}) {
             let resources = [...store(name).values()];
             if (params.has('@listId')) resources = resources.filter((d) => d.listId === params.get('@listId'));
             if (params.has('@uid')) resources = resources.filter((d) => d.uid === params.get('@uid'));
+            if (params.has('@tokenHash')) resources = resources.filter((d) => d.tokenHash === params.get('@tokenHash'));
+            if (params.has('@type')) resources = resources.filter((d) => d.type === params.get('@type'));
             const ids = query.parameters.filter((p) => p.name.startsWith('@id')).map((p) => p.value);
             if (ids.length && name === 'lists') resources = resources.filter((d) => ids.includes(d.id));
             if (ids.length && name === 'links') resources = resources.filter((d) => ids.includes(d.listId));
@@ -201,8 +220,9 @@ describe('rtdb', () => {
       links: [fullLink('keep', 0), fullLink('remove', 1)],
     });
     vi.mocked(getDb).mockReturnValue(db as any);
-    await expect(updateList({ listId: 'list-1', description: 'new', links: [fullLink('keep', 2), fullLink('add', 3)] })).resolves.toBe(200);
+    await expect(updateList({ listId: 'list-1', actorId: 'u1', description: 'new', links: [fullLink('keep', 2), fullLink('add', 3)] })).resolves.toBe(200);
     expect(db.data.get('lists')!.get('list-1')!.description).toBe('new');
+    expect(db.data.get('lists')!.get('list-1')!.updatedBy).toBe('u1');
     expect(db.data.get('links')!.has('remove')).toBe(false);
     expect(db.data.get('links')!.has('add')).toBe(true);
   });
@@ -227,8 +247,11 @@ describe('rtdb', () => {
       }),
     };
     vi.mocked(getDb).mockReturnValue(spying as any);
-    await updateList({ listId: 'list-1' });
-    expect(patches).toEqual([{ op: 'set', path: '/updatedAt', value: 300 }]);
+    await updateList({ listId: 'list-1', actorId: 'u1' });
+    expect(patches).toEqual([
+      { op: 'set', path: '/updatedAt', value: 300 },
+      { op: 'set', path: '/updatedBy', value: 'u1' },
+    ]);
   });
 
   it('deleteList deletes list, slug, links, and userList records', async () => {
@@ -256,6 +279,34 @@ describe('rtdb', () => {
       .map((c: any) => c?.[0])[0];
     expect(query.query).toBe('SELECT c.listId FROM c WHERE c.uid = @uid');
     expect(query.parameters).toEqual([{ name: '@uid', value: 'u1' }]);
+  });
+
+  it('gets and updates memberships by list and user', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(500);
+    const db = createMockDb({
+      userLists: [
+        { id: 'u1_list-1', uid: 'u1', listId: 'list-1', role: 'owner', createdAt: 1, updatedAt: 1 },
+        { id: 'u2_list-1', uid: 'u2', listId: 'list-1', role: 'viewer', createdAt: 2, updatedAt: 2 },
+      ],
+    });
+    vi.mocked(getDb).mockReturnValue(db as any);
+    await expect(getListMembership('list-1', 'u2')).resolves.toMatchObject({ role: 'viewer' });
+    await expect(getListMemberships('list-1')).resolves.toHaveLength(2);
+    await expect(getUserListMemberships('u2')).resolves.toHaveLength(1);
+    await expect(updateListMembershipRole({ listId: 'list-1', uid: 'u2', role: 'editor' })).resolves.toMatchObject({ role: 'editor', updatedAt: 500 });
+    expect(db.data.get('userLists')!.get('u2_list-1')!.role).toBe('editor');
+    await expect(removeListMembership('list-1', 'u2')).resolves.toBe(true);
+    expect(db.data.get('userLists')!.has('u2_list-1')).toBe(false);
+  });
+
+  it('does not remove or downgrade owner memberships', async () => {
+    const db = createMockDb({
+      userLists: [{ id: 'u1_list-1', uid: 'u1', listId: 'list-1', role: 'owner', createdAt: 1, updatedAt: 1 }],
+    });
+    vi.mocked(getDb).mockReturnValue(db as any);
+    await expect(updateListMembershipRole({ listId: 'list-1', uid: 'u1', role: 'viewer' })).resolves.toBeNull();
+    await expect(removeListMembership('list-1', 'u1')).resolves.toBe(false);
+    expect(db.data.get('userLists')!.has('u1_list-1')).toBe(true);
   });
 
   it('cleanupFailedPublish cleans up all artifacts', async () => {
@@ -351,6 +402,7 @@ describe('rtdb', () => {
     const db = createMockDb({
       lists: [{ id: 'list-1' }],
       links: [fullLink('a', 0)],
+      userLists: [{ id: 'u1_list-1', uid: 'u1', listId: 'list-1', role: 'owner' }],
     });
     const failingDeletes = new Set(['lists', 'slugs', 'userLists']);
     const flaky = {
@@ -442,5 +494,157 @@ describe('rtdb', () => {
       { name: '@id1', value: 'l2' },
       { name: '@id2', value: 'l3' },
     ]);
+  });
+
+  it('creates and lists invites without returning token hashes', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1000);
+    const db = createMockDb();
+    vi.mocked(getDb).mockReturnValue(db as any);
+
+    const created = await createInvite({ listId: 'list-1', role: 'editor', createdBy: 'u1', expiresInDays: 2 });
+    expect(created.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(created.invite).toMatchObject({ listId: 'list-1', role: 'editor', createdBy: 'u1', expiresAt: 1000 + 2 * 24 * 60 * 60 * 1000 });
+    expect('tokenHash' in created.invite).toBe(false);
+
+    const stored = [...db.data.get('invites')!.values()][0];
+    expect(stored.tokenHash).toMatch(/^[a-f0-9]{64}$/);
+    const invites = await listInvites('list-1');
+    expect(invites).toHaveLength(1);
+    expect('tokenHash' in invites[0]).toBe(false);
+  });
+
+  it('revokes and rotates invites without reusing the old token', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1000);
+    const db = createMockDb();
+    vi.mocked(getDb).mockReturnValue(db as any);
+    const first = await createInvite({ listId: 'list-1', role: 'viewer', createdBy: 'owner' });
+
+    vi.spyOn(Date, 'now').mockReturnValue(2000);
+    const rotated = await rotateInvite({ listId: 'list-1', inviteId: first.invite.id, actorId: 'owner', expiresInDays: 1 });
+    expect(rotated?.token).not.toBe(first.token);
+    expect(rotated?.invite).toMatchObject({ role: 'viewer', rotatedFrom: first.invite.id });
+    expect(db.data.get('invites')!.get(first.invite.id)!.revokedAt).toBe(2000);
+
+    const revoked = await revokeInvite({ listId: 'list-1', inviteId: rotated!.invite.id, actorId: 'owner' });
+    expect(revoked).toMatchObject({ id: rotated!.invite.id, revokedBy: 'owner' });
+  });
+
+  it('accepts an invite once and creates a membership with the invited role', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1000);
+    const db = createMockDb({
+      lists: [{ id: 'list-1', slug: 's', description: '', ownerId: 'owner', createdAt: 1, updatedAt: 1 }],
+    });
+    vi.mocked(getDb).mockReturnValue(db as any);
+    const created = await createInvite({ listId: 'list-1', role: 'editor', createdBy: 'owner' });
+
+    vi.spyOn(Date, 'now').mockReturnValue(2000);
+    const accepted = await acceptInvite({
+      token: created.token,
+      user: { uid: 'u2', username: 'octo', name: 'Octo', avatar: 'https://github.com/octo.png' },
+    });
+    expect(accepted).toEqual({ status: 'accepted', listId: 'list-1', role: 'editor', slug: 's' });
+    expect(db.data.get('userLists')!.get('u2_list-1')).toMatchObject({ role: 'editor', username: 'octo', invitedBy: 'owner' });
+    expect(db.data.get('invites')!.get(created.invite.id)!.acceptedBy).toBe('u2');
+
+    await expect(acceptInvite({
+      token: created.token,
+      user: { uid: 'u3', username: 'mona', name: 'Mona', avatar: '' },
+    })).resolves.toEqual({ status: 'used' });
+  });
+
+  it('reports a concurrently revoked invite when the atomic acceptance claim fails', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1000);
+    const db = createMockDb({
+      lists: [{ id: 'list-1', slug: 's', description: '', ownerId: 'owner', createdAt: 1, updatedAt: 1 }],
+    });
+    vi.mocked(getDb).mockReturnValue(db as unknown as ReturnType<typeof getDb>);
+    const created = await createInvite({ listId: 'list-1', role: 'editor', createdBy: 'owner' });
+
+    let failClaim = true;
+    const racingDb = {
+      ...db,
+      container: vi.fn((name: string) => {
+        const c = db.container(name);
+        if (name !== 'invites') return c;
+        return {
+          ...c,
+          item: (id: string) => {
+            const item = c.item(id);
+            return {
+              ...item,
+              patch: vi.fn(async (body: { op?: string; path: string; value?: unknown }[] | { operations: { op?: string; path: string; value?: unknown }[] }) => {
+                if (id === created.invite.id && failClaim) {
+                  failClaim = false;
+                  db.data.get('invites')!.get(id)!.revokedAt = 1500;
+                  throw Object.assign(new Error('precondition failed'), { code: 412 });
+                }
+                return item.patch(body);
+              }),
+            };
+          },
+        };
+      }),
+    };
+    vi.mocked(getDb).mockReturnValue(racingDb as unknown as ReturnType<typeof getDb>);
+
+    vi.spyOn(Date, 'now').mockReturnValue(2000);
+    await expect(acceptInvite({
+      token: created.token,
+      user: { uid: 'u2', username: 'octo', name: 'Octo', avatar: '' },
+    })).resolves.toEqual({ status: 'revoked' });
+    expect(db.data.get('userLists')?.has('u2_list-1')).not.toBe(true);
+  });
+
+  it('rolls back the invite claim when membership persistence fails', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1000);
+    const db = createMockDb({
+      lists: [{ id: 'list-1', slug: 's', description: '', ownerId: 'owner', createdAt: 1, updatedAt: 1 }],
+    });
+    vi.mocked(getDb).mockReturnValue(db as unknown as ReturnType<typeof getDb>);
+    const created = await createInvite({ listId: 'list-1', role: 'viewer', createdBy: 'owner' });
+
+    const failingMembershipDb = {
+      ...db,
+      container: vi.fn((name: string) => {
+        const c = db.container(name);
+        if (name !== 'userLists') return c;
+        return {
+          ...c,
+          items: {
+            ...c.items,
+            upsert: vi.fn(async () => {
+              throw new Error('membership write failed');
+            }),
+          },
+        };
+      }),
+    };
+    vi.mocked(getDb).mockReturnValue(failingMembershipDb as unknown as ReturnType<typeof getDb>);
+
+    await expect(acceptInvite({
+      token: created.token,
+      user: { uid: 'u2', username: 'octo', name: 'Octo', avatar: '' },
+    })).rejects.toThrow('membership write failed');
+    expect(db.data.get('invites')!.get(created.invite.id)!.acceptedAt).toBeUndefined();
+    expect(db.data.get('invites')!.get(created.invite.id)!.acceptedBy).toBeUndefined();
+  });
+
+  it('rejects invalid, expired, and revoked invites', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1000);
+    const db = createMockDb({
+      lists: [{ id: 'list-1', slug: 's', description: '', ownerId: 'owner', createdAt: 1, updatedAt: 1 }],
+    });
+    vi.mocked(getDb).mockReturnValue(db as any);
+
+    await expect(acceptInvite({ token: 'missing-token-value-abcdefghijklmnopqrstuvwxyz', user: { uid: 'u2', username: 'octo', name: 'Octo', avatar: '' } })).resolves.toEqual({ status: 'invalid' });
+
+    const expired = await createInvite({ listId: 'list-1', role: 'viewer', createdBy: 'owner', expiresInDays: 1 });
+    vi.spyOn(Date, 'now').mockReturnValue(1000 + 24 * 60 * 60 * 1000 + 1);
+    await expect(acceptInvite({ token: expired.token, user: { uid: 'u2', username: 'octo', name: 'Octo', avatar: '' } })).resolves.toEqual({ status: 'expired' });
+
+    vi.spyOn(Date, 'now').mockReturnValue(3000);
+    const revoked = await createInvite({ listId: 'list-1', role: 'viewer', createdBy: 'owner' });
+    await revokeInvite({ listId: 'list-1', inviteId: revoked.invite.id, actorId: 'owner' });
+    await expect(acceptInvite({ token: revoked.token, user: { uid: 'u2', username: 'octo', name: 'Octo', avatar: '' } })).resolves.toEqual({ status: 'revoked' });
   });
 });

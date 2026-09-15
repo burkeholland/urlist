@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { NavHeader } from '@/components/nav-header';
+import { CollaboratorPanel } from '@/components/collaborator-panel';
 import { UrlInput } from '@/components/url-input';
 import { SortableLinkList } from '@/components/sortable-link-list';
 import { useDraft } from '@/hooks/use-draft';
@@ -24,6 +25,8 @@ export default function EditComposePage({ params }: EditPageProps) {
   const [fetching, setFetching] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const userRole = listData?.userRole ?? null;
+  const canEdit = userRole === 'owner' || userRole === 'editor';
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -36,9 +39,10 @@ export default function EditComposePage({ params }: EditPageProps) {
   useEffect(() => {
     async function fetchList() {
       try {
-        const res = await fetch(`/api/lists/${listId}`);
+        const res = await fetch(`/api/lists/${listId}`, { credentials: 'include' });
         if (!res.ok) {
-          setError('List not found.');
+          const body = await res.json().catch(() => null);
+          setError(body?.error?.message || 'List not found.');
           return;
         }
         const data: ListWithLinks = await res.json();
@@ -120,8 +124,8 @@ export default function EditComposePage({ params }: EditPageProps) {
     setError(null);
 
     try {
-      if (!user) {
-        setError('You must be signed in to edit a list.');
+      if (!user || !canEdit) {
+        setError('You need editor access to edit this list.');
         return;
       }
 
@@ -265,15 +269,20 @@ export default function EditComposePage({ params }: EditPageProps) {
               onChange={(e) => setDescription(e.target.value.slice(0, 280))}
               placeholder="What's this list about?"
               className="input"
+              disabled={!canEdit}
             />
             <p className="char-count">{description.length}/280</p>
           </div>
         </div>
 
-        <div className="field-group">
-          <label className="label">Add links</label>
-          <UrlInput onSubmit={handleAddUrl} placeholder="Paste a URL..." size="large" />
-        </div>
+        <CollaboratorPanel listId={listId} currentUserId={user?.uid ?? null} userRole={userRole} />
+
+        {canEdit && (
+          <div className="field-group">
+            <label className="label">Add links</label>
+            <UrlInput onSubmit={handleAddUrl} placeholder="Paste a URL..." size="large" />
+          </div>
+        )}
 
         <section className="field-group">
           <div className="section-head">
@@ -282,21 +291,32 @@ export default function EditComposePage({ params }: EditPageProps) {
             </h2>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <SortableLinkList links={links} onReorder={reorderLinks} onDelete={removeLink} onUpdate={updateLink} onPin={pinLink} />
+            <SortableLinkList
+              links={links}
+              onReorder={reorderLinks}
+              onDelete={removeLink}
+              onUpdate={updateLink}
+              onPin={pinLink}
+              readOnly={!canEdit}
+            />
           </div>
         </section>
 
-        <div className="compose-actions">
-          <button
-            onClick={handleSave}
-            disabled={links.length === 0 || saving}
-            className="btn btn-primary"
-            style={links.length === 0 || saving ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-          <span className="small muted">{links.length} link{links.length === 1 ? '' : 's'}</span>
-        </div>
+        {canEdit ? (
+          <div className="compose-actions">
+            <button
+              onClick={handleSave}
+              disabled={links.length === 0 || saving}
+              className="btn btn-primary"
+              style={links.length === 0 || saving ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <span className="small muted">{links.length} link{links.length === 1 ? '' : 's'}</span>
+          </div>
+        ) : (
+          <p className="small muted">Read-only access · {links.length} link{links.length === 1 ? '' : 's'}</p>
+        )}
 
         <style jsx>{`
           .compose-header {

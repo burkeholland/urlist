@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAuth } from '@/lib/auth';
+import { getSessionUser, verifyAuth } from '@/lib/auth';
 import {
   validateSlugFormat,
   generateSlug,
@@ -7,7 +7,7 @@ import {
   generateLinkId,
 } from '@/lib/slug';
 import { normalizeUrl, isValidHttpUrl } from '@/lib/url';
-import { reserveSlug, cleanupFailedPublish, createList, getUserListIds, getListsWithLinks } from '@/lib/rtdb';
+import { reserveSlug, cleanupFailedPublish, createList, getUserListMemberships, getListsWithLinks } from '@/lib/rtdb';
 import { getListAnalyticsSummary } from '@/lib/analytics';
 import { checkRateLimit, getClientIp, RATE_LIMITS } from '@/lib/rate-limiter';
 import { log } from '@/lib/logger';
@@ -28,15 +28,21 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const listIds = await getUserListIds(authResult.uid);
+  const memberships = await getUserListMemberships(authResult.uid);
+  const listIds = memberships.map((membership) => membership.listId);
   const lists = await getListsWithLinks(listIds);
+  const roleByListId = new Map(memberships.map((membership) => [membership.listId, membership.role]));
+  const listsWithRoles = lists.map((list) => ({
+    ...list,
+    userRole: list.ownerId === authResult.uid ? 'owner' : roleByListId.get(list.listId) ?? null,
+  }));
 
   const { searchParams } = new URL(request.url);
   const includeStats = searchParams.get('includeStats') === 'true';
 
   if (includeStats) {
     const listsWithStats = await Promise.all(
-      lists.map(async (list) => {
+      listsWithRoles.map(async (list) => {
         const stats = await getListAnalyticsSummary(list.slug).catch(() => ({
           totalViews: 0,
           totalClicks: 0,
@@ -47,7 +53,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(listsWithStats);
   }
 
-  return NextResponse.json(lists);
+  return NextResponse.json(listsWithRoles);
 }
 
 export async function POST(request: NextRequest) {
@@ -190,11 +196,13 @@ export async function POST(request: NextRequest) {
 
   // Write to database — clean up all artifacts if createList fails
   try {
+    const ownerProfile = authResult.authenticated ? await getSessionUser(request) : null;
     await createList({
       listId,
       slug,
       description: description.slice(0, 280),
       ownerId: authResult.uid,
+      ownerProfile,
       links: sanitizedLinks,
     });
   } catch (error) {

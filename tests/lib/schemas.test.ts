@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CreateListSchema, MAX_LINKS, UpdateListSchema, sanitizeText } from '@/lib/schemas/shared';
+import { AcceptInviteSchema, CreateInviteSchema, CreateListSchema, MAX_LINKS, UpdateListSchema, sanitizeText, UpdateMemberSchema } from '@/lib/schemas/shared';
 
 const link = (overrides = {}) => ({
   url: 'https://example.com',
@@ -84,5 +84,32 @@ describe('UpdateListSchema', () => {
   it('allows update links to include an optional id field', () => {
     const result = UpdateListSchema.parse({ updatedAt: 1, links: [link({ id: 'link-1' })] });
     expect(result.links?.[0].id).toBe('link-1');
+  });
+});
+
+describe('collaboration schemas', () => {
+  it('defaults invites to editor role and seven-day expiry', () => {
+    expect(CreateInviteSchema.parse({})).toEqual({ role: 'editor', expiresInDays: 7 });
+  });
+
+  it('accepts viewer invites and rejects owner invites', () => {
+    expect(CreateInviteSchema.parse({ role: 'viewer', expiresInDays: 30 }).role).toBe('viewer');
+    expect(() => CreateInviteSchema.parse({ role: 'owner' })).toThrow();
+  });
+
+  it('requires bounded invite expiry', () => {
+    expect(() => CreateInviteSchema.parse({ expiresInDays: 0 })).toThrow();
+    expect(() => CreateInviteSchema.parse({ expiresInDays: 31 })).toThrow();
+  });
+
+  it('validates invite tokens as base64url-like secrets', () => {
+    expect(AcceptInviteSchema.parse({ token: 'abcdefghijklmnopqrstuvwxyzABCDEF_-' }).token).toBeTruthy();
+    expect(() => AcceptInviteSchema.parse({ token: 'short' })).toThrow();
+    expect(() => AcceptInviteSchema.parse({ token: 'bad token value with spaces' })).toThrow();
+  });
+
+  it('allows member roles to change only to editor or viewer', () => {
+    expect(UpdateMemberSchema.parse({ role: 'editor' }).role).toBe('editor');
+    expect(() => UpdateMemberSchema.parse({ role: 'owner' })).toThrow();
   });
 });

@@ -15,10 +15,10 @@ const testUser = {
   avatar: 'https://github.com/testuser.png',
 };
 
-function createRequest(opts: { cookie?: string; bearer?: string } = {}): NextRequest {
+function createRequest(opts: { cookie?: string; bearer?: string; scheme?: string } = {}): NextRequest {
   const headers = new Headers();
   if (opts.bearer) {
-    headers.set('Authorization', `Bearer ${opts.bearer}`);
+    headers.set('Authorization', `${opts.scheme ?? 'Bearer'} ${opts.bearer}`);
   }
   if (opts.cookie) {
     headers.set('Cookie', `session=${opts.cookie}`);
@@ -163,6 +163,14 @@ describe('getSessionUser', () => {
     expect(user!.uid).toBe('user123');
     expect(user!.username).toBe('testuser');
     expect(user!.name).toBe('Test User');
+  });
+
+  it('returns user from valid bearer token', async () => {
+    const token = await createSessionToken(testUser);
+    const req = createRequest({ bearer: token });
+    const user = await getSessionUser(req);
+    expect(user?.uid).toBe('user123');
+    expect(user?.username).toBe('testuser');
   });
 
   it('returns null with no cookie', async () => {

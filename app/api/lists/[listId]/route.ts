@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth, requireAuth, AuthError } from '@/lib/auth';
 import { getList, getListWithLinks, updateList, deleteList } from '@/lib/rtdb';
+import { getEffectiveListRole, hasMinimumRole } from '@/lib/authorization';
 import { normalizeUrl, isValidHttpUrl } from '@/lib/url';
 import { generateLinkId } from '@/lib/slug';
 import { log } from '@/lib/logger';
@@ -17,16 +18,37 @@ export async function GET(
   { params }: { params: Promise<{ listId: string }> },
 ) {
   const { listId } = await params;
-  const listWithLinks = await getListWithLinks(listId);
 
-  if (!listWithLinks) {
-    return NextResponse.json(
-      { error: { code: 'LIST_NOT_FOUND', message: 'No list exists with this ID.' } },
-      { status: 404 },
-    );
+  try {
+    const authResult = await verifyAuth(request);
+    requireAuth(authResult);
+
+    const listWithLinks = await getListWithLinks(listId);
+    if (!listWithLinks) {
+      return NextResponse.json(
+        { error: { code: 'LIST_NOT_FOUND', message: 'No list exists with this ID.' } },
+        { status: 404 },
+      );
+    }
+
+    const userRole = await getEffectiveListRole(listId, listWithLinks, authResult.uid);
+    if (!hasMinimumRole(userRole, 'viewer')) {
+      return NextResponse.json(
+        { error: { code: 'FORBIDDEN', message: 'You do not have access to this list.' } },
+        { status: 403 },
+      );
+    }
+
+    return NextResponse.json({ ...listWithLinks, userRole });
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json(
+        { error: { code: error.code, message: error.message } },
+        { status: 401 },
+      );
+    }
+    throw error;
   }
-
-  return NextResponse.json(listWithLinks);
 }
 
 export async function PATCH(
@@ -47,9 +69,10 @@ export async function PATCH(
       );
     }
 
-    if (list.ownerId !== authResult.uid) {
+    const userRole = await getEffectiveListRole(listId, list, authResult.uid);
+    if (!hasMinimumRole(userRole, 'editor')) {
       return NextResponse.json(
-        { error: { code: 'FORBIDDEN', message: 'You are not the owner of this list.' } },
+        { error: { code: 'FORBIDDEN', message: 'You need editor access to update this list.' } },
         { status: 403 },
       );
     }
@@ -89,6 +112,8 @@ export async function PATCH(
           error: {
             code: 'CONFLICT',
             message: 'List was modified since your last fetch. Re-fetch and retry.',
+            currentUpdatedAt: list.updatedAt,
+            updatedBy: list.updatedBy ?? list.ownerId,
           },
         },
         { status: 409 },
@@ -154,6 +179,7 @@ export async function PATCH(
 
     const newUpdatedAt = await updateList({
       listId,
+      actorId: authResult.uid,
       description: description?.slice(0, 280),
       links: sanitizedLinks,
     });
@@ -166,6 +192,8 @@ export async function PATCH(
         listId,
         hasDescriptionChange: description !== undefined,
         hasLinksChange: links !== undefined,
+        actorId: authResult.uid,
+        actorRole: userRole,
       },
     });
 
@@ -199,9 +227,10 @@ export async function DELETE(
       );
     }
 
-    if (list.ownerId !== authResult.uid) {
+    const userRole = await getEffectiveListRole(listId, list, authResult.uid);
+    if (userRole !== 'owner') {
       return NextResponse.json(
-        { error: { code: 'FORBIDDEN', message: 'You are not the owner of this list.' } },
+        { error: { code: 'FORBIDDEN', message: 'Only the owner can delete this list.' } },
         { status: 403 },
       );
     }
