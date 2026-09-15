@@ -9,9 +9,11 @@ import {
   createEmbedCode,
   EMBED_RESIZE_MESSAGE_TYPE,
   estimateEmbedHeight,
+  getAdjacentPublicListViewMode,
+  PUBLIC_LIST_VIEW_MODES,
 } from '@/lib/embed';
 import { copyText, legacyCopyToClipboard, shareContent, supportsWebShare } from '@/lib/share';
-import type { EmbedTheme, PublicRenderOptions } from '@/lib/embed';
+import type { EmbedTheme, PublicListViewMode, PublicRenderOptions } from '@/lib/embed';
 import type { ListWithLinks, TrackEventPayload } from '@/lib/types';
 
 const QRCodeSVG = dynamic(
@@ -61,8 +63,6 @@ const DARK_EMBED_THEME = {
   '--success': '#22c55e',
 } as React.CSSProperties;
 
-type ViewMode = 'list' | 'qr' | 'embed';
-
 interface PublicListClientProps {
   list: ListWithLinks;
   slug: string;
@@ -74,6 +74,7 @@ function trackEvent(listId: string, payload: TrackEventPayload) {
   fetch(`/api/lists/${listId}/analytics/events`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'omit',
     body: JSON.stringify(payload),
     keepalive: true,
   }).catch(() => {
@@ -154,12 +155,17 @@ export function PublicListClient({
 }: PublicListClientProps) {
   const isEmbed = renderOptions.isEmbed;
   const [showBanner, setShowBanner] = useState(justPublished && !isEmbed);
-  const [view, setView] = useState<ViewMode>('list');
+  const [view, setView] = useState<PublicListViewMode>('list');
   const [publicUrl, setPublicUrl] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState<string | null>(null);
   const [selectedEmbedTheme, setSelectedEmbedTheme] = useState<EmbedTheme>(renderOptions.theme);
   const [previewHeight, setPreviewHeight] = useState(estimateEmbedHeight(list.links.length));
   const previewFrameRef = useRef<HTMLIFrameElement>(null);
+  const viewTabRefs = useRef<Record<PublicListViewMode, HTMLButtonElement | null>>({
+    list: null,
+    qr: null,
+    embed: null,
+  });
   const nativeShareSupported = useMemo(() => {
     if (typeof navigator === 'undefined' || !publicUrl) {
       return false;
@@ -280,6 +286,20 @@ export function PublicListClient({
 
   const announce = useCallback((message: string) => {
     setAnnouncement(message);
+  }, []);
+
+  const selectView = useCallback((nextView: PublicListViewMode) => {
+    setView(nextView);
+  }, []);
+
+  const handleViewTabKeyDown = useCallback((currentView: PublicListViewMode, key: string) => {
+    const nextView = getAdjacentPublicListViewMode(currentView, key);
+    if (!nextView) {
+      return;
+    }
+
+    setView(nextView);
+    viewTabRefs.current[nextView]?.focus();
   }, []);
 
   const copyValue = useCallback(async (value: string, successMessage: string) => {
@@ -503,13 +523,29 @@ export function PublicListClient({
             </div>
 
             <div className="view-toggle" role="tablist" aria-label="View mode">
-              {(['list', 'qr', 'embed'] as const).map((mode) => (
+              {PUBLIC_LIST_VIEW_MODES.map((mode) => (
                 <button
                   key={mode}
+                  id={`view-tab-${mode}`}
+                  type="button"
                   role="tab"
                   aria-selected={view === mode}
+                  aria-controls={`view-panel-${mode}`}
+                  tabIndex={view === mode ? 0 : -1}
                   className={`view-toggle-btn${view === mode ? ' active' : ''}`}
-                  onClick={() => setView(mode)}
+                  onClick={() => selectView(mode)}
+                  onKeyDown={(event) => {
+                    const nextView = getAdjacentPublicListViewMode(mode, event.key);
+                    if (!nextView) {
+                      return;
+                    }
+
+                    event.preventDefault();
+                    handleViewTabKeyDown(mode, event.key);
+                  }}
+                  ref={(element) => {
+                    viewTabRefs.current[mode] = element;
+                  }}
                 >
                   {icon(mode)}
                   {mode === 'qr' ? 'QR' : mode[0].toUpperCase() + mode.slice(1)}
@@ -526,7 +562,12 @@ export function PublicListClient({
         <hr className="divider" />
 
         {view === 'list' ? (
-          <div className="pub-links" role="tabpanel" aria-label="Link list">
+          <div
+            id="view-panel-list"
+            className="pub-links"
+            role="tabpanel"
+            aria-labelledby="view-tab-list"
+          >
             {publicCards.map((link) => (
               <LinkCard
                 key={link.id}
@@ -557,7 +598,12 @@ export function PublicListClient({
         ) : null}
 
         {view === 'qr' ? (
-          <div className="qr-view" role="tabpanel" aria-label="QR code">
+          <div
+            id="view-panel-qr"
+            className="qr-view"
+            role="tabpanel"
+            aria-labelledby="view-tab-qr"
+          >
             {publicUrl ? (
               <>
                 <div className="qr-card">
@@ -578,7 +624,12 @@ export function PublicListClient({
         ) : null}
 
         {view === 'embed' ? (
-          <div className="embed-panel" role="tabpanel" aria-label="Embed preview and code">
+          <div
+            id="view-panel-embed"
+            className="embed-panel"
+            role="tabpanel"
+            aria-labelledby="view-tab-embed"
+          >
             <div className="embed-panel-head">
               <div>
                 <h2>Read-only embed</h2>

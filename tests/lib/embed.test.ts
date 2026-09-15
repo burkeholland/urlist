@@ -4,8 +4,10 @@ import {
   createEmbedCode,
   EMBED_QUERY_VALUE,
   estimateEmbedHeight,
+  getAdjacentPublicListViewMode,
   getPublicRenderOptions,
   parseEmbedTheme,
+  PUBLIC_LIST_VIEW_MODES,
   shouldBootstrapAuth,
   shouldTrackEmbedAnalytics,
 } from '@/lib/embed';
@@ -88,6 +90,26 @@ describe('estimateEmbedHeight', () => {
     expect(estimateEmbedHeight(0)).toBe(320);
     expect(estimateEmbedHeight(2)).toBe(388);
     expect(estimateEmbedHeight(50)).toBe(880);
+  });
+});
+
+describe('getAdjacentPublicListViewMode', () => {
+  it('wraps between tabs with arrow keys', () => {
+    expect(getAdjacentPublicListViewMode('list', 'ArrowLeft')).toBe('embed');
+    expect(getAdjacentPublicListViewMode('embed', 'ArrowRight')).toBe('list');
+    expect(getAdjacentPublicListViewMode('qr', 'ArrowDown')).toBe('embed');
+    expect(getAdjacentPublicListViewMode('qr', 'ArrowUp')).toBe('list');
+  });
+
+  it('jumps to the first or last tab with home and end', () => {
+    expect(getAdjacentPublicListViewMode('embed', 'Home')).toBe(PUBLIC_LIST_VIEW_MODES[0]);
+    expect(getAdjacentPublicListViewMode('list', 'End')).toBe(
+      PUBLIC_LIST_VIEW_MODES[PUBLIC_LIST_VIEW_MODES.length - 1],
+    );
+  });
+
+  it('ignores unrelated keys', () => {
+    expect(getAdjacentPublicListViewMode('list', 'Enter')).toBeNull();
   });
 });
 

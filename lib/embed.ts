@@ -1,8 +1,10 @@
 export const EMBED_QUERY_VALUE = '1';
 export const EMBED_RESIZE_MESSAGE_TYPE = 'urlist:embed:resize';
 export const EMBED_THEMES = ['system', 'light', 'dark'] as const;
+export const PUBLIC_LIST_VIEW_MODES = ['list', 'qr', 'embed'] as const;
 
 export type EmbedTheme = (typeof EMBED_THEMES)[number];
+export type PublicListViewMode = (typeof PUBLIC_LIST_VIEW_MODES)[number];
 
 export interface PublicRenderOptions {
   isEmbed: boolean;
@@ -58,6 +60,39 @@ export function buildEmbedUrl(
 
 export function estimateEmbedHeight(linkCount: number): number {
   return Math.min(880, Math.max(320, 196 + linkCount * 96));
+}
+
+export function getAdjacentPublicListViewMode(
+  current: PublicListViewMode,
+  key: string,
+): PublicListViewMode | null {
+  if (key === 'Home') {
+    return PUBLIC_LIST_VIEW_MODES[0];
+  }
+
+  if (key === 'End') {
+    return PUBLIC_LIST_VIEW_MODES[PUBLIC_LIST_VIEW_MODES.length - 1];
+  }
+
+  const currentIndex = PUBLIC_LIST_VIEW_MODES.indexOf(current);
+  if (currentIndex === -1) {
+    return null;
+  }
+
+  const delta =
+    key === 'ArrowRight' || key === 'ArrowDown'
+      ? 1
+      : key === 'ArrowLeft' || key === 'ArrowUp'
+        ? -1
+        : 0;
+
+  if (delta === 0) {
+    return null;
+  }
+
+  const nextIndex =
+    (currentIndex + delta + PUBLIC_LIST_VIEW_MODES.length) % PUBLIC_LIST_VIEW_MODES.length;
+  return PUBLIC_LIST_VIEW_MODES[nextIndex];
 }
 
 function escapeAttribute(value: string): string {
