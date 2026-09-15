@@ -8,6 +8,31 @@ export interface ListRecord {
   updatedAt: number;
 }
 
+export type LinkHealthStatus =
+  | 'unchecked'
+  | 'healthy'
+  | 'redirected'
+  | 'transient'
+  | 'broken'
+  | 'dismissed';
+
+export type LinkHealthReason =
+  | 'unchecked'
+  | 'ok'
+  | 'redirect'
+  | 'http_404'
+  | 'http_410'
+  | 'http_5xx'
+  | 'dns_error'
+  | 'timeout'
+  | 'repeated_timeout'
+  | 'network_error'
+  | 'ssrf_blocked'
+  | 'too_many_redirects'
+  | 'dismissed';
+
+export type MetadataRefreshStatus = 'skipped' | 'updated' | 'unchanged' | 'failed';
+
 export interface LinkRecord {
   url: string;
   position: number;
@@ -16,7 +41,19 @@ export interface LinkRecord {
   ogDescription: string | null;
   ogImage: string | null;
   ogSiteName: string | null;
+  ogTitleUserEdited?: boolean;
+  ogDescriptionUserEdited?: boolean;
   createdAt: number;
+  healthStatus?: LinkHealthStatus;
+  healthReason?: LinkHealthReason;
+  healthCheckedAt?: number | null;
+  healthFinalUrl?: string | null;
+  healthHttpStatus?: number | null;
+  healthFailureCount?: number;
+  healthNextCheckAt?: number | null;
+  healthDismissedAt?: number | null;
+  metadataRefreshedAt?: number | null;
+  metadataRefreshStatus?: MetadataRefreshStatus;
 }
 
 export interface LinkWithId extends LinkRecord {
@@ -42,7 +79,19 @@ export interface DraftLink {
   ogDescription: string | null;
   ogImage: string | null;
   ogSiteName: string | null;
+  ogTitleUserEdited?: boolean;
+  ogDescriptionUserEdited?: boolean;
   ogLoading?: boolean;
+  healthStatus?: LinkHealthStatus;
+  healthReason?: LinkHealthReason;
+  healthCheckedAt?: number | null;
+  healthFinalUrl?: string | null;
+  healthHttpStatus?: number | null;
+  healthFailureCount?: number;
+  healthNextCheckAt?: number | null;
+  healthDismissedAt?: number | null;
+  metadataRefreshedAt?: number | null;
+  metadataRefreshStatus?: MetadataRefreshStatus;
 }
 
 export interface Draft {

@@ -1,5 +1,13 @@
 import { getDb } from './cosmos';
-import { ListRecord, LinkWithId, ListWithLinks } from './types';
+import {
+  ListRecord,
+  LinkHealthReason,
+  LinkHealthStatus,
+  LinkRecord,
+  LinkWithId,
+  ListWithLinks,
+  MetadataRefreshStatus,
+} from './types';
 import { encodeSlugForKey, validateSlugFormat } from './slug';
 import { log } from './logger';
 
@@ -18,7 +26,7 @@ export async function getList(listId: string): Promise<ListRecord | null> {
 export async function getLinks(listId: string): Promise<LinkWithId[]> {
   const { resources } = await getDb()
     .container('links')
-    .items.query<{ id: string; listId: string; url: string; position: number; pinned: boolean | undefined; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null; createdAt: number }>({
+    .items.query<LinkRecord & { id: string; listId: string; pinned: boolean | undefined }>({
       query: 'SELECT * FROM c WHERE c.listId = @listId ORDER BY c.position ASC',
       parameters: [{ name: '@listId', value: listId }],
     })
@@ -128,7 +136,7 @@ export async function createList(params: {
   slug: string;
   description: string;
   ownerId: string | null;
-  links: { id: string; url: string; position: number; pinned: boolean; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null }[];
+  links: { id: string; url: string; position: number; pinned: boolean; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null; ogTitleUserEdited?: boolean; ogDescriptionUserEdited?: boolean }[];
 }): Promise<void> {
   const { listId, slug, description, ownerId, links } = params;
   const now = Date.now();
@@ -156,7 +164,19 @@ export async function createList(params: {
         ogDescription: link.ogDescription,
         ogImage: link.ogImage,
         ogSiteName: link.ogSiteName,
+        ogTitleUserEdited: link.ogTitleUserEdited ?? false,
+        ogDescriptionUserEdited: link.ogDescriptionUserEdited ?? false,
         createdAt: now,
+        healthStatus: 'unchecked',
+        healthReason: 'unchecked',
+        healthCheckedAt: null,
+        healthFinalUrl: null,
+        healthHttpStatus: null,
+        healthFailureCount: 0,
+        healthNextCheckAt: now,
+        healthDismissedAt: null,
+        metadataRefreshedAt: null,
+        metadataRefreshStatus: 'skipped',
       }),
     ),
   );
@@ -174,7 +194,7 @@ export async function createList(params: {
 export async function updateList(params: {
   listId: string;
   description?: string;
-  links?: { id: string; url: string; position: number; pinned: boolean; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null }[];
+  links?: { id: string; url: string; position: number; pinned: boolean; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null; ogTitleUserEdited?: boolean; ogDescriptionUserEdited?: boolean }[];
 }): Promise<number> {
   const { listId, description, links } = params;
   const now = Date.now();
@@ -192,18 +212,21 @@ export async function updateList(params: {
     const linkContainer = db.container('links');
 
     const { resources: existing } = await linkContainer.items
-      .query<{ id: string; listId: string }>({
-        query: 'SELECT c.id, c.listId FROM c WHERE c.listId = @listId',
+      .query<LinkRecord & { id: string; listId: string }>({
+        query: 'SELECT * FROM c WHERE c.listId = @listId',
         parameters: [{ name: '@listId', value: listId }],
       })
       .fetchAll();
 
     const newIds = new Set(links.map((l) => l.id));
+    const existingById = new Map(existing.map((link) => [link.id, link]));
 
     // Create new/updated links first (safe — won't lose data on failure)
     await Promise.all(
-      links.map((link) =>
-        linkContainer.items.upsert({
+      links.map((link) => {
+        const existingLink = existingById.get(link.id);
+        const keepHealth = existingLink?.url === link.url;
+        return linkContainer.items.upsert({
           id: link.id,
           listId,
           url: link.url,
@@ -213,9 +236,21 @@ export async function updateList(params: {
           ogDescription: link.ogDescription,
           ogImage: link.ogImage,
           ogSiteName: link.ogSiteName,
+          ogTitleUserEdited: link.ogTitleUserEdited ?? existingLink?.ogTitleUserEdited ?? (existingLink?.ogTitle !== null && existingLink?.ogTitle !== undefined),
+          ogDescriptionUserEdited: link.ogDescriptionUserEdited ?? existingLink?.ogDescriptionUserEdited ?? (existingLink?.ogDescription !== null && existingLink?.ogDescription !== undefined),
           createdAt: now,
-        }),
-      ),
+          healthStatus: keepHealth ? existingLink.healthStatus ?? 'unchecked' : 'unchecked',
+          healthReason: keepHealth ? existingLink.healthReason ?? 'unchecked' : 'unchecked',
+          healthCheckedAt: keepHealth ? existingLink.healthCheckedAt ?? null : null,
+          healthFinalUrl: keepHealth ? existingLink.healthFinalUrl ?? null : null,
+          healthHttpStatus: keepHealth ? existingLink.healthHttpStatus ?? null : null,
+          healthFailureCount: keepHealth ? existingLink.healthFailureCount ?? 0 : 0,
+          healthNextCheckAt: keepHealth ? existingLink.healthNextCheckAt ?? now : now,
+          healthDismissedAt: keepHealth ? existingLink.healthDismissedAt ?? null : null,
+          metadataRefreshedAt: keepHealth ? existingLink.metadataRefreshedAt ?? null : null,
+          metadataRefreshStatus: keepHealth ? existingLink.metadataRefreshStatus ?? 'skipped' : 'skipped',
+        });
+      }),
     );
 
     // Then delete removed links (only links not in the new set)
@@ -224,6 +259,38 @@ export async function updateList(params: {
   }
 
   return now;
+}
+
+export async function updateLinkHealth(params: {
+  listId: string;
+  linkId: string;
+  updates: Partial<Pick<
+    LinkRecord,
+    | 'ogTitle'
+    | 'ogDescription'
+    | 'ogImage'
+    | 'ogSiteName'
+    | 'healthCheckedAt'
+    | 'healthFinalUrl'
+    | 'healthHttpStatus'
+    | 'healthFailureCount'
+    | 'healthNextCheckAt'
+    | 'healthDismissedAt'
+    | 'metadataRefreshedAt'
+  >> & {
+    healthStatus?: LinkHealthStatus;
+    healthReason?: LinkHealthReason;
+    metadataRefreshStatus?: MetadataRefreshStatus;
+  };
+}): Promise<void> {
+  const patchOps = Object.entries(params.updates).map(([key, value]) => ({
+    op: 'set' as const,
+    path: `/${key}`,
+    value,
+  }));
+
+  if (patchOps.length === 0) return;
+  await getDb().container('links').item(params.linkId, params.listId).patch(patchOps);
 }
 
 // Delete a list and all related data
@@ -292,7 +359,7 @@ export async function getListsWithLinks(listIds: string[]): Promise<ListWithLink
 
   // Single query for all links across all lists
   const { resources: allLinks } = await db.container('links').items
-    .query<{ id: string; listId: string; url: string; position: number; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null; createdAt: number }>({
+    .query<LinkRecord & { id: string; listId: string }>({
       query: `SELECT * FROM c WHERE c.listId IN (${listIds.map((_, i) => `@id${i}`).join(',')}) ORDER BY c.position ASC`,
       parameters: listIds.map((id, i) => ({ name: `@id${i}`, value: id })),
     })

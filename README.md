@@ -6,6 +6,7 @@ A link-list sharing app. Create curated collections of URLs, give them a custom 
 
 - **Create & organize link lists** — add URLs, drag-and-drop to reorder, and auto-fetch Open Graph metadata (titles, descriptions, images)
 - **Pin a link** — pin one link to the top of a list to highlight it; pinned links are visually marked in the public view
+- **Monitor link health** — owners can manually recheck links, see healthy/redirected/possibly broken/broken states, dismiss false positives, and refresh preview metadata without silently changing destination URLs or owner-edited text
 - **Custom slugs** — publish your list at a memorable URL like `/my-awesome-links`
 - **Public link sharing** — published URL cards include one-click copy buttons for individual links
 - **GitHub authentication** — sign in with GitHub to save and manage your lists
@@ -57,6 +58,12 @@ Open [http://localhost:3000](http://localhost:3000) to see the app.
 | `npm run test:watch` | Run tests in watch mode |
 
 Pull requests automatically run the test suite through GitHub Actions.
+
+### Link health checks
+
+Link checks use the same SSRF-safe fetch path as preview metadata refreshes and validate every redirect hop before making the next request. Results are stored on each link as health status, reason, last checked time, HTTP status, final URL, retry count, next-check time, and metadata refresh status.
+
+This repository does not currently include durable scheduler infrastructure. Until one is added, owners can run checks explicitly from **My lists** or a scheduler can call the bounded authenticated `POST /api/link-health` job for an owner session. The job caps each run to 50 links, skips links that are not due unless requested, deduplicates identical destination URLs, and never rewrites a saved link URL automatically.
 
 ## Project Structure
 

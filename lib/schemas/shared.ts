@@ -44,6 +44,8 @@ const LinkInputSchema = z.object({
   ogDescription: z.string().nullable().optional(),
   ogImage: z.string().nullable().optional(),
   ogSiteName: z.string().nullable().optional(),
+  ogTitleUserEdited: z.boolean().optional(),
+  ogDescriptionUserEdited: z.boolean().optional(),
 });
 
 export const CreateListSchema = z.object({

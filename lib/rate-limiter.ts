@@ -11,6 +11,8 @@ export const RATE_LIMITS = {
   publishAnonymous: { endpoint: 'publish-anon', limit: 10, windowSeconds: 3600 },
   publishAuthenticated: { endpoint: 'publish-auth', limit: 100, windowSeconds: 3600 },
   ogScrape: { endpoint: 'og-scrape', limit: 60, windowSeconds: 3600 },
+  linkHealthManual: { endpoint: 'link-health-manual', limit: 120, windowSeconds: 3600 },
+  linkHealthJob: { endpoint: 'link-health-job', limit: 12, windowSeconds: 3600 },
   slugCheck: { endpoint: 'slug-check', limit: 120, windowSeconds: 3600 },
   validationError: { endpoint: 'validation-error', limit: 60, windowSeconds: 3600 },
 } satisfies Record<string, RateLimitConfig>;

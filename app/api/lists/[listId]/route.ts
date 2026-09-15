@@ -119,6 +119,8 @@ export async function PATCH(
           ogDescription: string | null;
           ogImage: string | null;
           ogSiteName: string | null;
+          ogTitleUserEdited?: boolean;
+          ogDescriptionUserEdited?: boolean;
         }[]
       | undefined;
 
@@ -148,6 +150,8 @@ export async function PATCH(
           ogDescription: sanitizeText(link.ogDescription, MAX_OG_DESCRIPTION_LENGTH),
           ogImage: link.ogImage && isValidHttpUrl(link.ogImage) ? link.ogImage : null,
           ogSiteName: sanitizeText(link.ogSiteName, MAX_OG_SITE_NAME_LENGTH),
+          ogTitleUserEdited: link.ogTitleUserEdited,
+          ogDescriptionUserEdited: link.ogDescriptionUserEdited,
         });
       }
     }

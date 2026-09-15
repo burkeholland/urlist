@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { NavHeader } from '@/components/nav-header';
 import { ConfirmModal } from '@/components/confirm-modal';
@@ -17,6 +17,7 @@ export default function MyLinksPage() {
   const [lists, setLists] = useState<ListWithStats[]>([]);
   const [fetching, setFetching] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [checkingListId, setCheckingListId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ListWithStats | null>(null);
 
   useEffect(() => {
@@ -25,28 +26,28 @@ export default function MyLinksPage() {
     }
   }, [authLoading, user, router]);
 
-  useEffect(() => {
-    async function fetchLists() {
-      if (!user) return;
-      try {
-        const res = await fetch('/api/lists?includeStats=true', { credentials: 'include' });
-        if (!res.ok) {
-          setLists([]);
-          return;
-        }
-        const data = await res.json();
-        setLists(Array.isArray(data) ? data : []);
-      } catch (err) {
-        console.error('Failed to fetch lists:', err);
-      } finally {
-        setFetching(false);
+  const fetchLists = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await fetch('/api/lists?includeStats=true', { credentials: 'include' });
+      if (!res.ok) {
+        setLists([]);
+        return;
       }
+      const data = await res.json();
+      setLists(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to fetch lists:', err);
+    } finally {
+      setFetching(false);
     }
+  }, [user]);
 
+  useEffect(() => {
     if (!authLoading && user) {
       void fetchLists();
     }
-  }, [authLoading, user]);
+  }, [authLoading, user, fetchLists]);
 
   const handleDelete = async (e: React.MouseEvent, list: ListWithStats) => {
     e.stopPropagation();
@@ -75,6 +76,38 @@ export default function MyLinksPage() {
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const checkListHealth = async (e: React.MouseEvent, list: ListWithStats) => {
+    e.stopPropagation();
+    setCheckingListId(list.listId);
+    try {
+      const res = await fetch('/api/link-health', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ listId: list.listId, limit: Math.min(list.links.length, 50), includeNotDue: true }),
+      });
+      if (!res.ok) {
+        const body = await res.json();
+        alert(body.error?.message || 'Failed to check links.');
+        return;
+      }
+      await fetchLists();
+    } catch {
+      alert('Failed to check links.');
+    } finally {
+      setCheckingListId(null);
+    }
+  };
+
+  const getHealthSummary = (list: ListWithStats) => {
+    const attention = list.links.filter((link) => ['redirected', 'transient', 'broken'].includes(link.healthStatus ?? '')).length;
+    const unchecked = list.links.filter((link) => !link.healthStatus || link.healthStatus === 'unchecked').length;
+    const broken = list.links.filter((link) => link.healthStatus === 'broken').length;
+    if (attention > 0) return `${attention} need attention${broken > 0 ? `, ${broken} broken` : ''}`;
+    if (unchecked > 0) return `${unchecked} unchecked`;
+    return 'All checked links healthy';
   };
 
   const skeletonGrid = (
@@ -147,6 +180,9 @@ export default function MyLinksPage() {
                   )}
                 </div>
                 <div className="tile-bottom">
+                  <div className={list.links.some((link) => ['redirected', 'transient', 'broken'].includes(link.healthStatus ?? '')) ? 'health-summary health-summary--attention' : 'health-summary'}>
+                    {getHealthSummary(list)}
+                  </div>
                   <div className="stats-row">
                     <span className="stat-pill">
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -185,6 +221,18 @@ export default function MyLinksPage() {
                       >
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M18 20V10M12 20V4M6 20v-6"/>
+                        </svg>
+                      </button>
+                      <button
+                        className="icon-btn icon-btn-health"
+                        title="Check links"
+                        disabled={checkingListId === list.listId}
+                        onClick={(e) => void checkListHealth(e, list)}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M22 12A10 10 0 1 1 12 2"/>
+                          <path d="M22 2 12 12"/>
+                          <path d="M16 2h6v6"/>
                         </svg>
                       </button>
                       <button
@@ -328,6 +376,17 @@ export default function MyLinksPage() {
           gap: 4px;
           flex-wrap: wrap;
         }
+        .health-summary {
+          font-size: 11px;
+          color: var(--text-muted);
+          font-family: var(--font-mono);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .health-summary--attention {
+          color: #a15c00;
+        }
         .stat-pill {
           font-family: var(--font-mono);
           font-size: 13px;
@@ -373,6 +432,7 @@ export default function MyLinksPage() {
         }
         .icon-btn-link:hover { color: var(--link); }
         .icon-btn-analytics:hover { color: var(--accent); }
+        .icon-btn-health:hover { color: #a15c00; }
         .icon-btn-delete:hover { color: var(--danger); }
         /* Skeleton */
         .skeleton-tile {

@@ -96,6 +96,8 @@ function ComposeContent() {
               ogDescription: data.ogDescription,
               ogImage: data.ogImage,
               ogSiteName: data.ogSiteName,
+              ogTitleUserEdited: false,
+              ogDescriptionUserEdited: false,
               ogLoading: false,
             });
           } else {
@@ -142,6 +144,8 @@ function ComposeContent() {
             ogDescription: l.ogDescription,
             ogImage: l.ogImage,
             ogSiteName: l.ogSiteName,
+            ogTitleUserEdited: l.ogTitleUserEdited,
+            ogDescriptionUserEdited: l.ogDescriptionUserEdited,
           })),
         }),
       });

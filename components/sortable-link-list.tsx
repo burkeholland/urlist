@@ -27,9 +27,28 @@ interface SortableLinkListProps {
   onDelete: (id: string) => void;
   onUpdate?: (id: string, updates: Partial<DraftLink>) => void;
   onPin?: (id: string) => void;
+  onRecheck?: (id: string) => void;
+  onDismissHealth?: (id: string) => void;
+  healthActionId?: string | null;
 }
 
-function SortableItem({ link, onDelete, onUpdate, onPin }: { link: DraftLink; onDelete: (id: string) => void; onUpdate?: (id: string, updates: Partial<DraftLink>) => void; onPin?: (id: string) => void }) {
+function SortableItem({
+  link,
+  onDelete,
+  onUpdate,
+  onPin,
+  onRecheck,
+  onDismissHealth,
+  healthActionId,
+}: {
+  link: DraftLink;
+  onDelete: (id: string) => void;
+  onUpdate?: (id: string, updates: Partial<DraftLink>) => void;
+  onPin?: (id: string) => void;
+  onRecheck?: (id: string) => void;
+  onDismissHealth?: (id: string) => void;
+  healthActionId?: string | null;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: link.id,
   });
@@ -61,14 +80,31 @@ function SortableItem({ link, onDelete, onUpdate, onPin }: { link: DraftLink; on
           </svg>
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <LinkCard link={link} onDelete={onDelete} onUpdate={onUpdate} onPin={onPin} />
+          <LinkCard
+            link={link}
+            onDelete={onDelete}
+            onUpdate={onUpdate}
+            onPin={onPin}
+            onRecheck={onRecheck}
+            onDismissHealth={onDismissHealth}
+            healthActionId={healthActionId}
+          />
         </div>
       </div>
     </div>
   );
 }
 
-export function SortableLinkList({ links, onReorder, onDelete, onUpdate, onPin }: SortableLinkListProps) {
+export function SortableLinkList({
+  links,
+  onReorder,
+  onDelete,
+  onUpdate,
+  onPin,
+  onRecheck,
+  onDismissHealth,
+  healthActionId,
+}: SortableLinkListProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -111,7 +147,16 @@ export function SortableLinkList({ links, onReorder, onDelete, onUpdate, onPin }
       <SortableContext items={links.map((l) => l.id)} strategy={verticalListSortingStrategy}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {links.map((link) => (
-            <SortableItem key={link.id} link={link} onDelete={onDelete} onUpdate={onUpdate} onPin={onPin} />
+            <SortableItem
+              key={link.id}
+              link={link}
+              onDelete={onDelete}
+              onUpdate={onUpdate}
+              onPin={onPin}
+              onRecheck={onRecheck}
+              onDismissHealth={onDismissHealth}
+              healthActionId={healthActionId}
+            />
           ))}
         </div>
       </SortableContext>
