@@ -7,6 +7,7 @@ import { SlugInput } from '@/components/slug-input';
 import { UrlInput } from '@/components/url-input';
 import { SortableLinkList } from '@/components/sortable-link-list';
 import { PublishButton } from '@/components/publish-button';
+import { ListVisibilityFields } from '@/components/list-visibility-fields';
 import { useDraft } from '@/hooks/use-draft';
 import { useDebounce } from '@/hooks/use-debounce';
 import { validateSlugFormat } from '@/lib/slug';
@@ -22,6 +23,8 @@ function ComposeContent() {
     setSlug,
     description,
     setDescription,
+    visibility,
+    setVisibility,
     links,
     loaded,
     addLink,
@@ -34,6 +37,7 @@ function ComposeContent() {
 
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [password, setPassword] = useState('');
   const [slugApiResult, setSlugApiResult] = useState<{ available: boolean; slug: string } | null>(null);
   const [initialUrlProcessed, setInitialUrlProcessed] = useState(false);
   const debouncedSlug = useDebounce(slug, 400);
@@ -134,6 +138,8 @@ function ComposeContent() {
         body: JSON.stringify({
           slug: slug || undefined,
           description,
+          visibility,
+          password: visibility === 'password-protected' ? password : undefined,
           links: links.map((l, i) => ({
             url: l.url,
             position: i,
@@ -163,6 +169,7 @@ function ComposeContent() {
 
   const isPublishDisabled =
     links.length === 0 ||
+    (visibility === 'password-protected' && password.length < 8) ||
     slugStatus === 'invalid' ||
     slugStatus === 'taken' ||
     slugStatus === 'checking';
@@ -241,6 +248,12 @@ function ComposeContent() {
               </div>
             </div>
           </div>
+          <ListVisibilityFields
+            visibility={visibility}
+            onVisibilityChange={setVisibility}
+            password={password}
+            onPasswordChange={setPassword}
+          />
         </div>
       </div>
 

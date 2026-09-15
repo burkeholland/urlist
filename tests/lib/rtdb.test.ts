@@ -7,6 +7,7 @@ import {
   deleteSlug,
   getLinks,
   getList,
+  getListPasswordAccess,
   getListsWithLinks,
   getListWithLinks,
   getUserListIds,
@@ -156,8 +157,24 @@ describe('rtdb', () => {
   it('getList returns a list without Cosmos id or null', async () => {
     const db = createMockDb({ lists: [{ id: 'list-1', slug: 's', description: '', ownerId: null, createdAt: 1, updatedAt: 2 }] });
     vi.mocked(getDb).mockReturnValue(db as any);
-    expect(await getList('list-1')).toEqual({ slug: 's', description: '', ownerId: null, createdAt: 1, updatedAt: 2 });
+    expect(await getList('list-1')).toEqual({ slug: 's', description: '', ownerId: null, visibility: 'public', hasPassword: false, createdAt: 1, updatedAt: 2 });
     await expect(getList('missing')).resolves.toBeNull();
+  });
+
+  it('getList strips stored password hashes but exposes a safe hasPassword flag', async () => {
+    const db = createMockDb({
+      lists: [{ id: 'list-1', slug: 's', description: '', ownerId: 'u1', visibility: 'password-protected', passwordHash: 'secret-hash', passwordUpdatedAt: 10, createdAt: 1, updatedAt: 2 }],
+    });
+    vi.mocked(getDb).mockReturnValue(db as any);
+    expect(await getList('list-1')).toEqual({ slug: 's', description: '', ownerId: 'u1', visibility: 'password-protected', hasPassword: true, createdAt: 1, updatedAt: 2 });
+  });
+
+  it('getListPasswordAccess reads password fields for access checks only', async () => {
+    const db = createMockDb({
+      lists: [{ id: 'list-1', slug: 's', description: '', ownerId: 'u1', visibility: 'password-protected', passwordHash: 'secret-hash', passwordUpdatedAt: 10, createdAt: 1, updatedAt: 2 }],
+    });
+    vi.mocked(getDb).mockReturnValue(db as any);
+    expect(await getListPasswordAccess('list-1')).toEqual({ visibility: 'password-protected', passwordHash: 'secret-hash', passwordUpdatedAt: 10 });
   });
 
   it('getLinks returns links sorted by pinned then position', async () => {

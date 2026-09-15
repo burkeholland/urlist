@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth, requireAuth, AuthError } from '@/lib/auth';
-import { getList, getListWithLinks, updateList, deleteList } from '@/lib/rtdb';
+import { requestHasListAccess } from '@/lib/list-access';
+import { getList, getListPasswordAccess, getListWithLinks, updateList, deleteList } from '@/lib/rtdb';
 import { normalizeUrl, isValidHttpUrl } from '@/lib/url';
 import { generateLinkId } from '@/lib/slug';
 import { log } from '@/lib/logger';
+import { hashListPassword } from '@/lib/password';
 import {
   UpdateListSchema,
   sanitizeText,
@@ -12,21 +14,44 @@ import {
   MAX_OG_SITE_NAME_LENGTH,
 } from '@/lib/schemas/shared';
 
+const ACCESS_CONTROL_HEADERS = {
+  'Cache-Control': 'private, no-store',
+  Vary: 'Cookie, Authorization',
+};
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ listId: string }> },
 ) {
   const { listId } = await params;
+  const list = await getList(listId);
+  const passwordAccess = list ? await getListPasswordAccess(listId) : null;
+
+  if (!list || !passwordAccess) {
+    return NextResponse.json(
+      { error: { code: 'LIST_NOT_FOUND', message: 'No list exists with this ID.' } },
+      { status: 404, headers: ACCESS_CONTROL_HEADERS },
+    );
+  }
+
+  const allowed = await requestHasListAccess(request, listId, list, passwordAccess.passwordUpdatedAt);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: { code: 'ACCESS_REQUIRED', message: 'Unlock this list to view it.' } },
+      { status: 403, headers: ACCESS_CONTROL_HEADERS },
+    );
+  }
+
   const listWithLinks = await getListWithLinks(listId);
 
   if (!listWithLinks) {
     return NextResponse.json(
       { error: { code: 'LIST_NOT_FOUND', message: 'No list exists with this ID.' } },
-      { status: 404 },
+      { status: 404, headers: ACCESS_CONTROL_HEADERS },
     );
   }
 
-  return NextResponse.json(listWithLinks);
+  return NextResponse.json(listWithLinks, { headers: ACCESS_CONTROL_HEADERS });
 }
 
 export async function PATCH(
@@ -80,7 +105,7 @@ export async function PATCH(
       );
     }
 
-    const { description, updatedAt, links } = parsed.data;
+    const { description, updatedAt, links, visibility, password } = parsed.data;
 
     // Optimistic concurrency check
     if (list.updatedAt !== updatedAt) {
@@ -152,9 +177,38 @@ export async function PATCH(
       }
     }
 
+    let passwordHash: string | null | undefined;
+    let passwordUpdatedAt: number | null | undefined;
+    const nextVisibility = visibility ?? list.visibility ?? 'public';
+
+    if (password && nextVisibility !== 'password-protected') {
+      return NextResponse.json(
+        { error: { code: 'PASSWORD_VISIBILITY_MISMATCH', message: 'Password can only be set for password-protected lists.' } },
+        { status: 400 },
+      );
+    }
+
+    if (nextVisibility === 'password-protected') {
+      if (password) {
+        passwordHash = await hashListPassword(password);
+        passwordUpdatedAt = Date.now();
+      } else if (!list.hasPassword) {
+        return NextResponse.json(
+          { error: { code: 'PASSWORD_REQUIRED', message: 'Password is required for password-protected lists.' } },
+          { status: 400 },
+        );
+      }
+    } else if (visibility !== undefined) {
+      passwordHash = null;
+      passwordUpdatedAt = null;
+    }
+
     const newUpdatedAt = await updateList({
       listId,
       description: description?.slice(0, 280),
+      visibility,
+      passwordHash,
+      passwordUpdatedAt,
       links: sanitizedLinks,
     });
 
@@ -165,6 +219,8 @@ export async function PATCH(
       data: {
         listId,
         hasDescriptionChange: description !== undefined,
+        hasVisibilityChange: visibility !== undefined,
+        hasPasswordChange: passwordHash !== undefined,
         hasLinksChange: links !== undefined,
       },
     });

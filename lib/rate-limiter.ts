@@ -13,6 +13,8 @@ export const RATE_LIMITS = {
   ogScrape: { endpoint: 'og-scrape', limit: 60, windowSeconds: 3600 },
   slugCheck: { endpoint: 'slug-check', limit: 120, windowSeconds: 3600 },
   validationError: { endpoint: 'validation-error', limit: 60, windowSeconds: 3600 },
+  passwordUnlock: { endpoint: 'password-unlock', limit: 5, windowSeconds: 15 * 60 },
+  passwordUnlockList: { endpoint: 'password-unlock-list', limit: 25, windowSeconds: 15 * 60 },
 } satisfies Record<string, RateLimitConfig>;
 
 function hashIp(ip: string): string {
@@ -28,7 +30,9 @@ function getWindowKey(windowSeconds: number): string {
 export function getClientIp(request: NextRequest): string {
   const forwarded = request.headers.get('x-forwarded-for');
   if (forwarded) {
-    return forwarded.split(',')[0].trim();
+    const chain = forwarded.split(',').map((ip) => ip.trim()).filter(Boolean);
+    const trustedPeer = chain.at(-1);
+    if (trustedPeer) return trustedPeer;
   }
   return '0.0.0.0';
 }
