@@ -5,9 +5,12 @@ import { useRouter } from 'next/navigation';
 import { NavHeader } from '@/components/nav-header';
 import { UrlInput } from '@/components/url-input';
 import { SortableLinkList } from '@/components/sortable-link-list';
+import { ListBrandingEditor } from '@/components/list-branding-editor';
+import { ListPreview } from '@/components/list-preview';
 import { useDraft } from '@/hooks/use-draft';
 import { useAuth } from '@/hooks/use-auth';
 import type { DraftLink, ListWithLinks } from '@/lib/types';
+import { toDraftBranding } from '@/lib/list-branding';
 import { nanoid } from 'nanoid';
 
 interface EditPageProps {
@@ -18,7 +21,22 @@ export default function EditComposePage({ params }: EditPageProps) {
   const { listId } = use(params);
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
-  const { description, setDescription, links, setLinks, loaded, addLink, updateLink, removeLink, reorderLinks, pinLink, clearDraft } = useDraft(listId);
+  const {
+    description,
+    setDescription,
+    branding,
+    updateBranding,
+    setBranding,
+    links,
+    setLinks,
+    loaded,
+    addLink,
+    updateLink,
+    removeLink,
+    reorderLinks,
+    pinLink,
+    clearDraft,
+  } = useDraft(listId);
 
   const [listData, setListData] = useState<ListWithLinks | null>(null);
   const [fetching, setFetching] = useState(true);
@@ -47,6 +65,7 @@ export default function EditComposePage({ params }: EditPageProps) {
         // Only populate draft if draft is empty (not previously saved)
         if (loaded && links.length === 0) {
           setDescription(data.description);
+          setBranding(toDraftBranding(data.branding));
           setLinks(
             data.links.map((l) => ({
               id: l.id,
@@ -70,7 +89,7 @@ export default function EditComposePage({ params }: EditPageProps) {
     if (loaded) {
       void fetchList();
     }
-  }, [listId, loaded, links.length, setDescription, setLinks]);
+  }, [listId, loaded, links.length, setBranding, setDescription, setLinks]);
 
   const handleAddUrl = useCallback(
     (url: string) => {
@@ -133,6 +152,14 @@ export default function EditComposePage({ params }: EditPageProps) {
         },
         body: JSON.stringify({
           description,
+          branding: {
+            publicTitle: branding.publicTitle || null,
+            socialTitle: branding.socialTitle || null,
+            socialDescription: branding.socialDescription || null,
+            coverImageUrl: branding.coverImageUrl || null,
+            socialImageUrl: branding.socialImageUrl || null,
+            appearance: branding.appearance,
+          },
           updatedAt: listData.updatedAt,
           links: links.map((l, i) => ({
             id: l.id,
@@ -269,6 +296,14 @@ export default function EditComposePage({ params }: EditPageProps) {
             <p className="char-count">{description.length}/280</p>
           </div>
         </div>
+
+        <ListBrandingEditor branding={branding} onChange={updateBranding} />
+        <ListPreview
+          slug={listData?.slug ?? ''}
+          description={description}
+          branding={branding}
+          links={links}
+        />
 
         <div className="field-group">
           <label className="label">Add links</label>

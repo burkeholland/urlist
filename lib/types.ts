@@ -1,8 +1,36 @@
 // Shared types for The Urlist
 
+export type ListThemePreset = 'default' | 'sunset' | 'ocean' | 'midnight';
+export type ListAccentPreset = 'coral' | 'teal' | 'violet' | 'amber';
+export type ListLayoutPreset = 'comfortable' | 'compact' | 'cards';
+
+export interface ListImageAsset {
+  url: string;
+  contentType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
+  width: number;
+  height: number;
+  sizeBytes: number;
+}
+
+export interface ListAppearanceSettings {
+  theme: ListThemePreset;
+  accent: ListAccentPreset;
+  layout: ListLayoutPreset;
+}
+
+export interface ListBranding {
+  publicTitle: string | null;
+  socialTitle: string | null;
+  socialDescription: string | null;
+  coverImage: ListImageAsset | null;
+  socialImage: ListImageAsset | null;
+  appearance: ListAppearanceSettings;
+}
+
 export interface ListRecord {
   slug: string;
   description: string;
+  branding: ListBranding;
   ownerId: string | null;
   createdAt: number;
   updatedAt: number;
@@ -27,6 +55,7 @@ export interface ListWithLinks {
   listId: string;
   slug: string;
   description: string;
+  branding: ListBranding;
   ownerId: string | null;
   createdAt: number;
   updatedAt: number;
@@ -45,9 +74,19 @@ export interface DraftLink {
   ogLoading?: boolean;
 }
 
+export interface DraftBranding {
+  publicTitle: string;
+  socialTitle: string;
+  socialDescription: string;
+  coverImageUrl: string;
+  socialImageUrl: string;
+  appearance: ListAppearanceSettings;
+}
+
 export interface Draft {
   slug: string;
   description: string;
+  branding: DraftBranding;
   links: DraftLink[];
   savedAt: number;
 }

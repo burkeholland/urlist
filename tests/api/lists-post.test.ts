@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { POST } from '@/app/api/lists/route';
 import { verifyAuth } from '@/lib/auth';
+import { sanitizeBrandingInput } from '@/lib/list-branding-server';
 import { cleanupFailedPublish, createList, reserveSlug } from '@/lib/rtdb';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limiter';
 
@@ -12,6 +13,16 @@ vi.mock('@/lib/rtdb', () => ({
   cleanupFailedPublish: vi.fn(),
   getUserListIds: vi.fn(),
   getListsWithLinks: vi.fn(),
+}));
+vi.mock('@/lib/list-branding-server', () => ({
+  sanitizeBrandingInput: vi.fn(),
+  BrandingValidationError: class BrandingValidationError extends Error {
+    code: string;
+    constructor(code: string, message: string) {
+      super(message);
+      this.code = code;
+    }
+  },
 }));
 vi.mock('@/lib/rate-limiter', () => ({
   checkRateLimit: vi.fn(),
@@ -27,6 +38,14 @@ const req = (body: unknown) => new NextRequest('https://urlist.test/api/lists', 
   method: 'POST',
   body: typeof body === 'string' ? body : JSON.stringify(body),
 });
+const defaultBranding = {
+  publicTitle: null,
+  socialTitle: null,
+  socialDescription: null,
+  coverImage: null,
+  socialImage: null,
+  appearance: { theme: 'default', accent: 'coral', layout: 'comfortable' },
+} as const;
 const validBody = { slug: 'my-list', description: 'desc', links: [{ url: 'example.com', position: 0 }] };
 const json = async (res: Response) => ({ status: res.status, body: await res.json() });
 
@@ -39,6 +58,7 @@ describe('POST /api/lists', () => {
     vi.mocked(reserveSlug).mockResolvedValue(true);
     vi.mocked(createList).mockResolvedValue();
     vi.mocked(cleanupFailedPublish).mockResolvedValue();
+    vi.mocked(sanitizeBrandingInput).mockResolvedValue(defaultBranding);
   });
 
   it('returns 429 when rate limited', async () => {
@@ -99,7 +119,7 @@ describe('POST /api/lists', () => {
     expect(res.body.slug).toBe('my-list');
     expect(res.body.publicUrl).toBe('/my-list');
     expect(res.body.listId).toEqual(expect.any(String));
-    expect(createList).toHaveBeenCalledWith(expect.objectContaining({ ownerId: 'u1', slug: 'my-list' }));
+    expect(createList).toHaveBeenCalledWith(expect.objectContaining({ ownerId: 'u1', slug: 'my-list', branding: defaultBranding }));
   });
 
   it('logs the publish with list metadata', async () => {
@@ -211,6 +231,42 @@ describe('POST /api/lists', () => {
     expect(res.status).toBe(500);
     expect(res.body.error.code).toBe('SLUG_GENERATION_FAILED');
     expect(reserveSlug).toHaveBeenCalledTimes(5);
+  });
+
+  it('passes sanitized branding through to createList', async () => {
+    const branding = {
+      ...defaultBranding,
+      publicTitle: 'My collection',
+      socialTitle: 'Share this list',
+    };
+    vi.mocked(sanitizeBrandingInput).mockResolvedValueOnce(branding);
+    const res = await json(await POST(req({
+      ...validBody,
+      branding: {
+        publicTitle: 'My collection',
+        socialTitle: 'Share this list',
+      },
+    })));
+    expect(res.status).toBe(201);
+    expect(sanitizeBrandingInput).toHaveBeenCalledWith(expect.objectContaining({
+      publicTitle: 'My collection',
+      socialTitle: 'Share this list',
+    }));
+    expect(createList).toHaveBeenCalledWith(expect.objectContaining({ branding }));
+  });
+
+  it('returns 400 when branding validation fails', async () => {
+    const { BrandingValidationError } = await import('@/lib/list-branding-server');
+    vi.mocked(sanitizeBrandingInput).mockRejectedValueOnce(
+      new BrandingValidationError('INVALID_COVER_IMAGE', 'Image exceeds the 5MB limit.'),
+    );
+    const res = await json(await POST(req({
+      ...validBody,
+      branding: { coverImageUrl: 'https://cdn.example.com/huge.png' },
+    })));
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('INVALID_COVER_IMAGE');
+    expect(res.body.error.message).toBe('Image exceeds the 5MB limit.');
   });
 
   it('calls cleanupFailedPublish on createList failure', async () => {

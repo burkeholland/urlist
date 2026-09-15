@@ -4,6 +4,7 @@ import { getList, getListWithLinks, updateList, deleteList } from '@/lib/rtdb';
 import { normalizeUrl, isValidHttpUrl } from '@/lib/url';
 import { generateLinkId } from '@/lib/slug';
 import { log } from '@/lib/logger';
+import { BrandingValidationError, sanitizeBrandingInput } from '@/lib/list-branding-server';
 import {
   UpdateListSchema,
   sanitizeText,
@@ -80,7 +81,7 @@ export async function PATCH(
       );
     }
 
-    const { description, updatedAt, links } = parsed.data;
+    const { description, updatedAt, links, branding } = parsed.data;
 
     // Optimistic concurrency check
     if (list.updatedAt !== updatedAt) {
@@ -152,9 +153,52 @@ export async function PATCH(
       }
     }
 
+    let sanitizedBranding;
+    if (branding !== undefined) {
+      try {
+        sanitizedBranding = await sanitizeBrandingInput({
+          publicTitle:
+            branding.publicTitle === undefined ? list.branding.publicTitle : branding.publicTitle,
+          socialTitle:
+            branding.socialTitle === undefined ? list.branding.socialTitle : branding.socialTitle,
+          socialDescription:
+            branding.socialDescription === undefined
+              ? list.branding.socialDescription
+              : branding.socialDescription,
+          coverImageUrl:
+            branding.coverImageUrl === undefined
+              ? list.branding.coverImage?.url ?? null
+              : branding.coverImageUrl,
+          socialImageUrl:
+            branding.socialImageUrl === undefined
+              ? list.branding.socialImage?.url ?? null
+              : branding.socialImageUrl,
+          appearance: {
+            theme: branding.appearance?.theme ?? list.branding.appearance.theme,
+            accent: branding.appearance?.accent ?? list.branding.appearance.accent,
+            layout: branding.appearance?.layout ?? list.branding.appearance.layout,
+          },
+        });
+      } catch (error) {
+        if (error instanceof BrandingValidationError) {
+          return NextResponse.json(
+            {
+              error: {
+                code: error.code,
+                message: error.message,
+              },
+            },
+            { status: 400 },
+          );
+        }
+        throw error;
+      }
+    }
+
     const newUpdatedAt = await updateList({
       listId,
       description: description?.slice(0, 280),
+      branding: sanitizedBranding,
       links: sanitizedLinks,
     });
 
@@ -165,6 +209,7 @@ export async function PATCH(
       data: {
         listId,
         hasDescriptionChange: description !== undefined,
+        hasBrandingChange: branding !== undefined,
         hasLinksChange: links !== undefined,
       },
     });

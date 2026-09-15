@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { LinkCard } from '@/components/link-card';
 import { NavHeader } from '@/components/nav-header';
 import type { ListWithLinks, TrackEventPayload } from '@/lib/types';
+import { getBrandStyleVars, getPublicListTitle } from '@/lib/list-branding';
 
 const QRCodeSVG = dynamic(
   () => import('qrcode.react').then((m) => ({ default: m.QRCodeSVG })),
@@ -33,6 +34,12 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
   const [view, setView] = useState<'list' | 'qr'>('list');
   // null until mounted — avoids encoding a relative URL into the QR code
   const [publicUrl, setPublicUrl] = useState<string | null>(null);
+  const publicTitle = getPublicListTitle(slug, list.branding);
+  const listStyleVars = getBrandStyleVars(list.branding.appearance);
+  const hasBrandedHero =
+    !!list.branding.coverImage ||
+    list.branding.appearance.theme !== 'default' ||
+    !!list.branding.publicTitle;
 
   useEffect(() => {
     setPublicUrl(`${window.location.origin}/${slug}`);
@@ -84,7 +91,7 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
   );
 
   return (
-    <div>
+    <div style={listStyleVars}>
       <NavHeader />
 
       {showBanner && (
@@ -97,13 +104,41 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
       )}
 
       <main className="page">
+        {hasBrandedHero && (
+          <section className="pub-hero">
+            <div
+              className="pub-hero-media"
+              style={
+                list.branding.coverImage
+                  ? { backgroundImage: `url("${list.branding.coverImage.url}")` }
+                  : undefined
+              }
+              aria-hidden="true"
+            />
+            {list.branding.coverImage && <div className="pub-hero-overlay" />}
+            <div className="pub-hero-body">
+              <div className="pub-hero-slug">/{slug}</div>
+              <h1 className="pub-hero-title">{publicTitle}</h1>
+              {list.description && <p className="pub-hero-desc">{list.description}</p>}
+              <div className="pub-hero-meta">
+                {list.links.length} link{list.links.length !== 1 ? 's' : ''}
+              </div>
+            </div>
+          </section>
+        )}
+
         <div className="pub-header">
           <div>
-            <div className="pub-title">/{slug}</div>
-            {list.description && <div className="pub-desc">{list.description}</div>}
-            <div className="pub-meta">
-              {list.links.length} link{list.links.length !== 1 ? 's' : ''}
-            </div>
+            {!hasBrandedHero && (
+              <>
+                <div className="pub-title">{publicTitle}</div>
+                {publicTitle !== slug && <div className="pub-slug">/{slug}</div>}
+                {list.description && <div className="pub-desc">{list.description}</div>}
+                <div className="pub-meta">
+                  {list.links.length} link{list.links.length !== 1 ? 's' : ''}
+                </div>
+              </>
+            )}
           </div>
 
           <div className="view-toggle" role="group" aria-label="View mode">
@@ -146,7 +181,7 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
           <div className="pub-links" role="tabpanel" aria-label="Link list">
             {[...list.links].sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false)).map((link) => (
               <div key={link.id} onClick={() => handleLinkClick(link.id)}>
-                <LinkCard link={link} isPublicView />
+                <LinkCard link={link} isPublicView layout={list.branding.appearance.layout} />
               </div>
             ))}
           </div>
@@ -177,6 +212,70 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
           max-width: 860px;
           margin: 0 auto;
           padding: 28px 16px 48px;
+          background: var(--list-page-gradient);
+        }
+
+        .pub-hero {
+          position: relative;
+          overflow: hidden;
+          border: 1px solid var(--list-hero-border);
+          border-radius: 18px;
+          margin-bottom: 18px;
+          min-height: 220px;
+          background: var(--list-hero-gradient);
+        }
+
+        .pub-hero-media {
+          position: absolute;
+          inset: 0;
+          background: var(--list-hero-gradient);
+          background-size: cover;
+          background-position: center;
+        }
+
+        .pub-hero-overlay {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(180deg, rgba(15, 23, 42, 0.10) 0%, rgba(15, 23, 42, 0.70) 100%);
+        }
+
+        .pub-hero-body {
+          position: relative;
+          z-index: 1;
+          display: flex;
+          flex-direction: column;
+          justify-content: flex-end;
+          min-height: 220px;
+          padding: 24px;
+          color: var(--list-hero-text);
+        }
+
+        .pub-hero-slug {
+          font-family: var(--font-mono);
+          font-size: 14px;
+          color: var(--list-hero-muted);
+          margin-bottom: 6px;
+        }
+
+        .pub-hero-title {
+          font-size: clamp(1.875rem, 3vw, 2.75rem);
+          font-weight: 700;
+          line-height: 1.05;
+          margin: 0 0 10px;
+        }
+
+        .pub-hero-desc {
+          max-width: 640px;
+          font-size: 16px;
+          line-height: 1.5;
+          color: var(--list-hero-muted);
+          margin: 0 0 10px;
+        }
+
+        .pub-hero-meta {
+          font-family: var(--font-mono);
+          font-size: 14px;
+          color: var(--list-hero-muted);
         }
 
         .pub-header {
@@ -222,11 +321,17 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
         }
 
         .pub-title {
-          font-family: var(--font-mono);
-          font-size: 20px;
-          font-weight: 600;
+          font-size: 32px;
+          font-weight: 700;
           margin-bottom: 4px;
           color: var(--text);
+        }
+
+        .pub-slug {
+          font-family: var(--font-mono);
+          font-size: 14px;
+          margin-bottom: 6px;
+          color: var(--text-muted);
         }
 
         .pub-desc {
@@ -272,8 +377,8 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
         }
 
         .view-toggle-btn.active {
-          background: var(--accent);
-          color: #fff;
+          background: var(--list-accent);
+          color: var(--list-accent-fg);
         }
 
         .view-toggle-btn:not(.active):hover {
@@ -329,6 +434,31 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.4; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .qr-loading {
+            animation: none;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .pub-header {
+            flex-direction: column;
+          }
+
+          .pub-title {
+            font-size: 26px;
+          }
+
+          .pub-hero {
+            min-height: 200px;
+          }
+
+          .pub-hero-body {
+            min-height: 200px;
+            padding: 20px;
+          }
         }
       `}</style>
     </div>

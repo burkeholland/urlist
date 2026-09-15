@@ -18,13 +18,21 @@ vi.mock('@/lib/rate-limiter', () => ({ checkRateLimit: vi.fn(), getClientIp: vi.
 vi.mock('@/lib/logger', () => ({ log: vi.fn() }));
 
 const json = async (res: Response) => ({ status: res.status, body: await res.json() });
+const defaultBranding = {
+  publicTitle: null,
+  socialTitle: null,
+  socialDescription: null,
+  coverImage: null,
+  socialImage: null,
+  appearance: { theme: 'default', accent: 'coral', layout: 'comfortable' },
+} as const;
 
 describe('GET /api/lists', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u1' } as any);
     vi.mocked(getUserListIds).mockResolvedValue(['list-1']);
-    vi.mocked(getListsWithLinks).mockResolvedValue([{ listId: 'list-1', slug: 's', description: '', ownerId: 'u1', createdAt: 1, updatedAt: 2, links: [] }]);
+    vi.mocked(getListsWithLinks).mockResolvedValue([{ listId: 'list-1', slug: 's', description: '', branding: defaultBranding, ownerId: 'u1', createdAt: 1, updatedAt: 2, links: [] }]);
     vi.mocked(getListAnalyticsSummary).mockResolvedValue({ totalViews: 3, totalClicks: 4 } as any);
   });
 
