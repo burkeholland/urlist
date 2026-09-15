@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { LinkCard } from '@/components/link-card';
 import { NavHeader } from '@/components/nav-header';
-import type { ListWithLinks, TrackEventPayload } from '@/lib/types';
+import type { PublicListWithLinks, TrackEventPayload } from '@/lib/types';
 
 const QRCodeSVG = dynamic(
   () => import('qrcode.react').then((m) => ({ default: m.QRCodeSVG })),
@@ -12,7 +12,7 @@ const QRCodeSVG = dynamic(
 );
 
 interface PublicListClientProps {
-  list: ListWithLinks;
+  list: PublicListWithLinks;
   slug: string;
   justPublished: boolean;
 }
@@ -29,6 +29,7 @@ function trackEvent(listId: string, payload: TrackEventPayload) {
 }
 
 export function PublicListClient({ list, slug, justPublished }: PublicListClientProps) {
+  const [currentList, setCurrentList] = useState(list);
   const [showBanner, setShowBanner] = useState(justPublished);
   const [view, setView] = useState<'list' | 'qr'>('list');
   // null until mounted — avoids encoding a relative URL into the QR code
@@ -74,14 +75,37 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
 
   const handleLinkClick = useCallback(
     (linkId: string) => {
-      trackEvent(list.listId, {
+      trackEvent(currentList.listId, {
         type: 'linkClick',
         linkId,
         referrer: document.referrer || undefined,
       });
     },
-    [list.listId],
+    [currentList.listId],
   );
+
+  const refreshVisibleLinks = useCallback(() => {
+    fetch(`/api/lists/${currentList.listId}?public=true`, { cache: 'no-store', credentials: 'omit' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: PublicListWithLinks | null) => {
+        if (data) setCurrentList(data);
+      })
+      .catch(() => {
+        // Schedule refresh should never interrupt readers
+      });
+  }, [currentList.listId]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(refreshVisibleLinks, 60000);
+    const timeoutId = currentList.nextVisibilityChangeAt != null
+      ? window.setTimeout(refreshVisibleLinks, Math.max(0, currentList.nextVisibilityChangeAt - Date.now() + 100))
+      : null;
+
+    return () => {
+      window.clearInterval(intervalId);
+      if (timeoutId != null) window.clearTimeout(timeoutId);
+    };
+  }, [currentList.nextVisibilityChangeAt, refreshVisibleLinks]);
 
   return (
     <div>
@@ -100,9 +124,9 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
         <div className="pub-header">
           <div>
             <div className="pub-title">/{slug}</div>
-            {list.description && <div className="pub-desc">{list.description}</div>}
+            {currentList.description && <div className="pub-desc">{currentList.description}</div>}
             <div className="pub-meta">
-              {list.links.length} link{list.links.length !== 1 ? 's' : ''}
+              {currentList.links.length} link{currentList.links.length !== 1 ? 's' : ''}
             </div>
           </div>
 
@@ -144,7 +168,7 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
 
         {view === 'list' ? (
           <div className="pub-links" role="tabpanel" aria-label="Link list">
-            {[...list.links].sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false)).map((link) => (
+            {[...currentList.links].sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false)).map((link) => (
               <div key={link.id} onClick={() => handleLinkClick(link.id)}>
                 <LinkCard link={link} isPublicView />
               </div>

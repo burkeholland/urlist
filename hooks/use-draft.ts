@@ -13,6 +13,9 @@ const DraftLinkSchema = z.object({
   url: z.string(),
   position: z.number(),
   pinned: z.boolean().optional().default(false),
+  visibleFrom: z.number().nullable().optional().default(null),
+  visibleUntil: z.number().nullable().optional().default(null),
+  visibleTimezone: z.string().nullable().optional().default(null),
   ogTitle: z.string().nullable(),
   ogDescription: z.string().nullable(),
   ogImage: z.string().nullable(),
@@ -94,12 +97,19 @@ export function useDraft(listId?: string) {
 
   // Load draft from localStorage after hydration to avoid server/client mismatch
   useEffect(() => {
-    const draft = loadDraft(listId);
-    if (draft) {
-      setState((prev) => ({ ...prev, slug: draft.slug, description: draft.description, links: draft.links, loaded: true }));
-    } else {
-      setState((prev) => ({ ...prev, loaded: true }));
-    }
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      const draft = loadDraft(listId);
+      if (draft) {
+        setState((prev) => ({ ...prev, slug: draft.slug, description: draft.description, links: draft.links, loaded: true }));
+      } else {
+        setState((prev) => ({ ...prev, loaded: true }));
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [listId]);
 
   const { slug, description, links, loaded } = state;
@@ -144,7 +154,14 @@ export function useDraft(listId?: string) {
   }, [listId, setSlug, setDescription, setLinks]);
 
   const addLink = useCallback((link: DraftLink) => {
-    setLinks((prev) => [...prev, { ...link, position: prev.length, pinned: false }]);
+    setLinks((prev) => [...prev, {
+      ...link,
+      position: prev.length,
+      pinned: false,
+      visibleFrom: link.visibleFrom ?? null,
+      visibleUntil: link.visibleUntil ?? null,
+      visibleTimezone: link.visibleTimezone ?? null,
+    }]);
   }, [setLinks]);
 
   const removeLink = useCallback((linkId: string) => {

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { unstable_noStore as noStore } from 'next/cache';
 import { getListWithLinks, resolveSlug } from '@/lib/rtdb';
+import { toPublicListPayload } from '@/lib/scheduling';
 import { PublicListClient } from './client';
 
 // Force dynamic rendering (no caching)
@@ -27,13 +28,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   if (!list) {
     return { title: 'List Not Found — The Urlist' };
   }
+  const publicList = toPublicListPayload(list);
 
   return {
     title: `${slug} — The Urlist`,
-    description: list.description || `A curated list of ${list.links.length} links`,
+    description: publicList.description || `A curated list of ${publicList.links.length} links`,
     openGraph: {
       title: `${slug} — The Urlist`,
-      description: list.description || `A curated list of ${list.links.length} links`,
+      description: publicList.description || `A curated list of ${publicList.links.length} links`,
       url: `/${slug}`,
     },
   };
@@ -57,5 +59,5 @@ export default async function PublicListPage({ params, searchParams }: PageProps
     notFound();
   }
 
-  return <PublicListClient list={list} slug={slug} justPublished={justPublished} />;
+  return <PublicListClient list={toPublicListPayload(list)} slug={slug} justPublished={justPublished} />;
 }

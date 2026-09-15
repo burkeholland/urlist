@@ -9,6 +9,7 @@ import {
 import { normalizeUrl, isValidHttpUrl } from '@/lib/url';
 import { reserveSlug, cleanupFailedPublish, createList, getUserListIds, getListsWithLinks } from '@/lib/rtdb';
 import { getListAnalyticsSummary } from '@/lib/analytics';
+import { normalizeLinkSchedule } from '@/lib/scheduling';
 import { checkRateLimit, getClientIp, RATE_LIMITS } from '@/lib/rate-limiter';
 import { log } from '@/lib/logger';
 import {
@@ -182,6 +183,7 @@ export async function POST(request: NextRequest) {
     url: link.url,
     position: link.position,
     pinned: link.pinned,
+    ...normalizeLinkSchedule(link),
     ogTitle: sanitizeText(link.ogTitle, MAX_OG_TITLE_LENGTH),
     ogDescription: sanitizeText(link.ogDescription, MAX_OG_DESCRIPTION_LENGTH),
     ogImage: link.ogImage && isValidHttpUrl(link.ogImage) ? link.ogImage : null,

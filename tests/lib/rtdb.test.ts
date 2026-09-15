@@ -74,12 +74,19 @@ function createMockDb(seed: Record<string, Doc[]> = {}) {
   return db;
 }
 
+function asCosmosDb(db: ReturnType<typeof createMockDb>): ReturnType<typeof getDb> {
+  return db as unknown as ReturnType<typeof getDb>;
+}
+
 const fullLink = (id: string, position: number, pinned = false) => ({
   id,
   listId: 'list-1',
   url: `https://example.com/${id}`,
   position,
   pinned,
+  visibleFrom: null,
+  visibleUntil: null,
+  visibleTimezone: null,
   ogTitle: null,
   ogDescription: null,
   ogImage: null,
@@ -94,14 +101,14 @@ describe('rtdb', () => {
 
   it('resolveSlug returns listId when slug exists and null when not', async () => {
     const db = createMockDb({ slugs: [{ id: 'a~b', slug: 'a~b', listId: 'list-1' }] });
-    vi.mocked(getDb).mockReturnValue(db as any);
+    vi.mocked(getDb).mockReturnValue(asCosmosDb(db));
     await expect(resolveSlug('a/b')).resolves.toBe('list-1');
     await expect(resolveSlug('missing')).resolves.toBeNull();
   });
 
   it('getLinks queries the links container filtered by listId and ordered by position', async () => {
     const db = createMockDb({ links: [fullLink('a', 0)] });
-    vi.mocked(getDb).mockReturnValue(db as any);
+    vi.mocked(getDb).mockReturnValue(asCosmosDb(db));
     await getLinks('list-1');
     const linksQuery = db.container.mock.results
       .map((r: any) => r.value.items.query.mock.calls)
@@ -173,6 +180,23 @@ describe('rtdb', () => {
     expect(links[0].pinned).toBe(false);
   });
 
+  it('defaults missing legacy schedule fields to always active nulls', async () => {
+    const {
+      visibleFrom: _visibleFrom,
+      visibleUntil: _visibleUntil,
+      visibleTimezone: _visibleTimezone,
+      ...legacy
+    } = fullLink('a', 0);
+    const db = createMockDb({ links: [legacy] });
+    vi.mocked(getDb).mockReturnValue(asCosmosDb(db));
+    const links = await getLinks('list-1');
+    expect(links[0]).toEqual(expect.objectContaining({
+      visibleFrom: null,
+      visibleUntil: null,
+      visibleTimezone: null,
+    }));
+  });
+
   it('getListWithLinks combines list and links', async () => {
     const db = createMockDb({
       lists: [{ id: 'list-1', slug: 's', description: '', ownerId: 'u1', createdAt: 1, updatedAt: 2 }],
@@ -191,7 +215,57 @@ describe('rtdb', () => {
     await createList({ listId: 'list-1', slug: 's', description: 'd', ownerId: 'u1', links: [fullLink('a', 0)] });
     expect(db.data.get('lists')!.get('list-1')!.updatedAt).toBe(100);
     expect(db.data.get('links')!.get('a')!.listId).toBe('list-1');
+    expect(db.data.get('links')!.get('a')).toEqual(expect.objectContaining({
+      visibleFrom: null,
+      visibleUntil: null,
+      visibleTimezone: null,
+    }));
     expect(db.data.get('userLists')!.get('u1_list-1')!.uid).toBe('u1');
+  });
+
+  it('persists scheduled link fields on create and update', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(200);
+    const db = createMockDb({
+      lists: [{ id: 'list-1', slug: 's', description: 'old', ownerId: 'u1', createdAt: 1, updatedAt: 2 }],
+      links: [fullLink('keep', 0)],
+    });
+    vi.mocked(getDb).mockReturnValue(asCosmosDb(db));
+    await createList({
+      listId: 'list-2',
+      slug: 'scheduled',
+      description: 'd',
+      ownerId: null,
+      links: [
+        {
+          ...fullLink('scheduled', 0),
+          visibleFrom: 1000,
+          visibleUntil: 2000,
+          visibleTimezone: 'America/Chicago',
+        },
+      ],
+    });
+    expect(db.data.get('links')!.get('scheduled')).toEqual(expect.objectContaining({
+      visibleFrom: 1000,
+      visibleUntil: 2000,
+      visibleTimezone: 'America/Chicago',
+    }));
+
+    await updateList({
+      listId: 'list-1',
+      links: [
+        {
+          ...fullLink('keep', 0),
+          visibleFrom: 3000,
+          visibleUntil: null,
+          visibleTimezone: 'UTC',
+        },
+      ],
+    });
+    expect(db.data.get('links')!.get('keep')).toEqual(expect.objectContaining({
+      visibleFrom: 3000,
+      visibleUntil: null,
+      visibleTimezone: 'UTC',
+    }));
   });
 
   it('updateList patches list, upserts current links, and deletes removed links', async () => {

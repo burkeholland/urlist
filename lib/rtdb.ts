@@ -2,6 +2,26 @@ import { getDb } from './cosmos';
 import { ListRecord, LinkWithId, ListWithLinks } from './types';
 import { encodeSlugForKey, validateSlugFormat } from './slug';
 import { log } from './logger';
+import { normalizeLinkSchedule } from './scheduling';
+
+type LinkWrite = {
+  id: string;
+  url: string;
+  position: number;
+  pinned: boolean;
+  visibleFrom: number | null;
+  visibleUntil: number | null;
+  visibleTimezone: string | null;
+  ogTitle: string | null;
+  ogDescription: string | null;
+  ogImage: string | null;
+  ogSiteName: string | null;
+};
+
+type LinkDoc = LinkWrite & {
+  listId: string;
+  createdAt: number;
+};
 
 // Read a list by listId
 export async function getList(listId: string): Promise<ListRecord | null> {
@@ -18,7 +38,7 @@ export async function getList(listId: string): Promise<ListRecord | null> {
 export async function getLinks(listId: string): Promise<LinkWithId[]> {
   const { resources } = await getDb()
     .container('links')
-    .items.query<{ id: string; listId: string; url: string; position: number; pinned: boolean | undefined; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null; createdAt: number }>({
+    .items.query<LinkDoc>({
       query: 'SELECT * FROM c WHERE c.listId = @listId ORDER BY c.position ASC',
       parameters: [{ name: '@listId', value: listId }],
     })
@@ -27,6 +47,7 @@ export async function getLinks(listId: string): Promise<LinkWithId[]> {
   const links = resources.map(({ listId: _listId, ...link }) => ({
     ...link,
     pinned: link.pinned ?? false,
+    ...normalizeLinkSchedule(link),
   }) as LinkWithId);
 
   // Sort pinned-first in app layer to safely handle existing docs without the field
@@ -128,7 +149,7 @@ export async function createList(params: {
   slug: string;
   description: string;
   ownerId: string | null;
-  links: { id: string; url: string; position: number; pinned: boolean; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null }[];
+  links: LinkWrite[];
 }): Promise<void> {
   const { listId, slug, description, ownerId, links } = params;
   const now = Date.now();
@@ -152,6 +173,9 @@ export async function createList(params: {
         url: link.url,
         position: link.position,
         pinned: link.pinned,
+        visibleFrom: link.visibleFrom,
+        visibleUntil: link.visibleUntil,
+        visibleTimezone: link.visibleTimezone,
         ogTitle: link.ogTitle,
         ogDescription: link.ogDescription,
         ogImage: link.ogImage,
@@ -174,7 +198,7 @@ export async function createList(params: {
 export async function updateList(params: {
   listId: string;
   description?: string;
-  links?: { id: string; url: string; position: number; pinned: boolean; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null }[];
+  links?: LinkWrite[];
 }): Promise<number> {
   const { listId, description, links } = params;
   const now = Date.now();
@@ -209,6 +233,9 @@ export async function updateList(params: {
           url: link.url,
           position: link.position,
           pinned: link.pinned,
+          visibleFrom: link.visibleFrom,
+          visibleUntil: link.visibleUntil,
+          visibleTimezone: link.visibleTimezone,
           ogTitle: link.ogTitle,
           ogDescription: link.ogDescription,
           ogImage: link.ogImage,
@@ -292,7 +319,7 @@ export async function getListsWithLinks(listIds: string[]): Promise<ListWithLink
 
   // Single query for all links across all lists
   const { resources: allLinks } = await db.container('links').items
-    .query<{ id: string; listId: string; url: string; position: number; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null; createdAt: number }>({
+    .query<LinkDoc>({
       query: `SELECT * FROM c WHERE c.listId IN (${listIds.map((_, i) => `@id${i}`).join(',')}) ORDER BY c.position ASC`,
       parameters: listIds.map((id, i) => ({ name: `@id${i}`, value: id })),
     })
@@ -302,7 +329,11 @@ export async function getListsWithLinks(listIds: string[]): Promise<ListWithLink
   const linksByListId = new Map<string, LinkWithId[]>();
   for (const { listId: _listId, ...link } of allLinks) {
     const links = linksByListId.get(_listId) ?? [];
-    links.push(link as LinkWithId);
+    links.push({
+      ...link,
+      pinned: link.pinned ?? false,
+      ...normalizeLinkSchedule(link),
+    } as LinkWithId);
     linksByListId.set(_listId, links);
   }
 

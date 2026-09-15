@@ -69,6 +69,30 @@ describe('CreateListSchema', () => {
     expect(() => CreateListSchema.parse({ links: [link({ position: 1.5 })] })).toThrow();
     expect(() => CreateListSchema.parse({ links: [link({ position: -1 })] })).toThrow();
   });
+
+  it('accepts start-only, end-only, and bounded scheduled links', () => {
+    expect(CreateListSchema.parse({
+      links: [link({ visibleFrom: 1000, visibleTimezone: 'America/Chicago' })],
+    }).links[0].visibleFrom).toBe(1000);
+    expect(CreateListSchema.parse({
+      links: [link({ visibleUntil: 2000, visibleTimezone: 'UTC' })],
+    }).links[0].visibleUntil).toBe(2000);
+    expect(CreateListSchema.parse({
+      links: [link({ visibleFrom: 1000, visibleUntil: 2000, visibleTimezone: 'Europe/London' })],
+    }).links[0].visibleTimezone).toBe('Europe/London');
+  });
+
+  it('rejects invalid scheduled link ranges and time zones', () => {
+    expect(() => CreateListSchema.parse({
+      links: [link({ visibleFrom: 2000, visibleUntil: 1000, visibleTimezone: 'UTC' })],
+    })).toThrow(/after visible from/);
+    expect(() => CreateListSchema.parse({
+      links: [link({ visibleFrom: 1000 })],
+    })).toThrow(/display time zone/);
+    expect(() => CreateListSchema.parse({
+      links: [link({ visibleFrom: 1000, visibleTimezone: 'Mars\\/Olympus' })],
+    })).toThrow(/valid display time zone/);
+  });
 });
 
 describe('UpdateListSchema', () => {
@@ -84,5 +108,17 @@ describe('UpdateListSchema', () => {
   it('allows update links to include an optional id field', () => {
     const result = UpdateListSchema.parse({ updatedAt: 1, links: [link({ id: 'link-1' })] });
     expect(result.links?.[0].id).toBe('link-1');
+  });
+
+  it('validates scheduled links on update', () => {
+    const result = UpdateListSchema.parse({
+      updatedAt: 1,
+      links: [link({ id: 'link-1', visibleFrom: 1000, visibleUntil: 2000, visibleTimezone: 'UTC' })],
+    });
+    expect(result.links?.[0].visibleUntil).toBe(2000);
+    expect(() => UpdateListSchema.parse({
+      updatedAt: 1,
+      links: [link({ visibleFrom: 2000, visibleUntil: 1000, visibleTimezone: 'UTC' })],
+    })).toThrow(/after visible from/);
   });
 });
