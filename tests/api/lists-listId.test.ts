@@ -76,7 +76,7 @@ describe('GET /api/lists/[listId]', () => {
         link('expired', { visibleUntil: Date.parse('2026-01-01T12:00:00.000Z'), visibleTimezone: 'UTC' }),
       ],
     });
-    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: false, uid: null } as any);
+    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: false, uid: null });
     const res = await json(await GET(req('GET'), ctx));
     expect(res.status).toBe(200);
     expect(res.body.links.map((l: { id: string }) => l.id)).toEqual(['active']);
@@ -93,10 +93,33 @@ describe('GET /api/lists/[listId]', () => {
         link('upcoming', { visibleFrom: Date.parse('2026-01-01T12:01:00.000Z'), visibleTimezone: 'UTC' }),
       ],
     });
-    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u1' } as any);
+    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u1' });
     const res = await json(await GET(req('GET'), ctx));
     expect(res.status).toBe(200);
     expect(res.body.links.map((l: { id: string }) => l.id)).toEqual(['active', 'upcoming']);
+  });
+
+  it('forces filtered public payloads even when owner cookies are present', async () => {
+    const now = Date.parse('2026-01-01T12:00:00.000Z');
+    const startsAt = Date.parse('2026-01-01T12:01:00.000Z');
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(now));
+    vi.mocked(getListWithLinks).mockResolvedValue({
+      listId: 'list-1',
+      ...list,
+      links: [
+        link('active'),
+        link('upcoming', { visibleFrom: startsAt, visibleTimezone: 'UTC' }),
+      ],
+    });
+    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u1' });
+
+    const res = await json(await GET(new NextRequest('https://urlist.test/api/lists/list-1?public=true'), ctx));
+
+    expect(res.status).toBe(200);
+    expect(res.body.links.map((l: { id: string }) => l.id)).toEqual(['active']);
+    expect(res.body.nextVisibilityChangeAt).toBe(startsAt);
+    expect(verifyAuth).not.toHaveBeenCalled();
   });
 });
 
@@ -104,7 +127,7 @@ describe('PATCH /api/lists/[listId]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(requireAuth).mockImplementation(() => undefined);
-    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u1' } as any);
+    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u1' });
     vi.mocked(getList).mockResolvedValue(list);
     vi.mocked(updateList).mockResolvedValue(20);
   });
@@ -128,7 +151,7 @@ describe('PATCH /api/lists/[listId]', () => {
   });
 
   it("returns 403 when user doesn't own the list", async () => {
-    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'other' } as any);
+    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'other' });
     const res = await json(await PATCH(req('PATCH', { updatedAt: 10 }), ctx));
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('FORBIDDEN');
@@ -300,7 +323,7 @@ describe('DELETE /api/lists/[listId]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(requireAuth).mockImplementation(() => undefined);
-    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u1' } as any);
+    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u1' });
     vi.mocked(getList).mockResolvedValue(list);
     vi.mocked(deleteList).mockResolvedValue();
   });
@@ -323,7 +346,7 @@ describe('DELETE /api/lists/[listId]', () => {
   });
 
   it("returns 403 when user doesn't own list", async () => {
-    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'other' } as any);
+    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'other' });
     const res = await json(await DELETE(req('DELETE'), ctx));
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('FORBIDDEN');

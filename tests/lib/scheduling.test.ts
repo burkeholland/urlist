@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   filterVisibleLinks,
+  getNextVisibilityChangeAt,
   getLinkScheduleError,
   getLinkVisibilityStatus,
   isLinkVisible,
   normalizeLinkSchedule,
+  toPublicListPayload,
   withVisibleLinks,
 } from '@/lib/scheduling';
 import type { LinkWithId } from '@/lib/types';
@@ -107,5 +109,26 @@ describe('link scheduling', () => {
       visibleUntil: null,
       visibleTimezone: 'UTC',
     });
+  });
+
+  it('reports the next schedule boundary without exposing hidden links', () => {
+    const now = Date.parse('2026-01-01T12:00:00.000Z');
+    const active = baseLink({ id: 'active', visibleUntil: Date.parse('2026-01-01T12:30:00.000Z'), visibleTimezone: 'UTC' });
+    const upcoming = baseLink({ id: 'upcoming', visibleFrom: Date.parse('2026-01-01T12:10:00.000Z'), visibleTimezone: 'UTC' });
+    const expired = baseLink({ id: 'expired', visibleUntil: now, visibleTimezone: 'UTC' });
+
+    expect(getNextVisibilityChangeAt([active, upcoming, expired], now)).toBe(Date.parse('2026-01-01T12:10:00.000Z'));
+    expect(toPublicListPayload({
+      listId: 'list-1',
+      slug: 'scheduled',
+      description: '',
+      ownerId: 'u1',
+      createdAt: 1,
+      updatedAt: 2,
+      links: [active, upcoming, expired],
+    }, now)).toEqual(expect.objectContaining({
+      nextVisibilityChangeAt: Date.parse('2026-01-01T12:10:00.000Z'),
+      links: [active],
+    }));
   });
 });

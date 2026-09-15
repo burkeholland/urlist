@@ -4,7 +4,7 @@ import { getList, getListWithLinks, updateList, deleteList } from '@/lib/rtdb';
 import { normalizeUrl, isValidHttpUrl } from '@/lib/url';
 import { generateLinkId } from '@/lib/slug';
 import { log } from '@/lib/logger';
-import { normalizeLinkSchedule, withVisibleLinks } from '@/lib/scheduling';
+import { normalizeLinkSchedule, toPublicListPayload } from '@/lib/scheduling';
 import {
   UpdateListSchema,
   sanitizeText,
@@ -27,6 +27,10 @@ export async function GET(
     );
   }
 
+  if (request.nextUrl.searchParams.get('public') === 'true') {
+    return NextResponse.json(toPublicListPayload(listWithLinks));
+  }
+
   let authResult: Awaited<ReturnType<typeof verifyAuth>> | null | undefined = null;
   try {
     authResult = await verifyAuth(request);
@@ -35,7 +39,7 @@ export async function GET(
   }
   const isOwner = authResult?.authenticated && authResult.uid === listWithLinks.ownerId;
 
-  return NextResponse.json(isOwner ? listWithLinks : withVisibleLinks(listWithLinks));
+  return NextResponse.json(isOwner ? listWithLinks : toPublicListPayload(listWithLinks));
 }
 
 export async function PATCH(

@@ -15,7 +15,8 @@ vi.mock('@/lib/rtdb', () => ({
 
 import { generateMetadata } from '@/app/[...slug]/page';
 import { getListWithLinks, resolveSlug } from '@/lib/rtdb';
-import type { LinkWithId, ListWithLinks } from '@/lib/types';
+import type { ReactElement } from 'react';
+import type { LinkWithId, ListWithLinks, PublicListWithLinks } from '@/lib/types';
 
 const link = (id: string, overrides: Partial<LinkWithId> = {}): LinkWithId => ({
   id,
@@ -72,6 +73,26 @@ describe('public list page metadata', () => {
 
     expect(metadata.description).toBe('A curated list of 1 links');
     expect(metadata.openGraph?.description).toBe('A curated list of 1 links');
+  });
+
+  it('computes the next public visibility boundary for the page payload', async () => {
+    const { default: PublicListPage } = await import('@/app/[...slug]/page');
+    const startsAt = Date.parse('2026-01-01T12:01:00.000Z');
+    vi.mocked(getListWithLinks).mockResolvedValue(list({
+      links: [
+        link('active'),
+        link('upcoming', { visibleFrom: startsAt, visibleTimezone: 'UTC' }),
+      ],
+    }));
+
+    const result = await PublicListPage({
+      params: Promise.resolve({ slug: ['scheduled'] }),
+      searchParams: Promise.resolve({}),
+    });
+
+    const element = result as ReactElement<{ list: PublicListWithLinks }>;
+    expect(element.props.list.nextVisibilityChangeAt).toBe(startsAt);
+    expect(element.props.list.links.map((item) => item.id)).toEqual(['active']);
   });
 
   it('returns not-found metadata when the slug cannot be resolved', async () => {

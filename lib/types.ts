@@ -36,6 +36,10 @@ export interface ListWithLinks {
   links: LinkWithId[];
 }
 
+export interface PublicListWithLinks extends ListWithLinks {
+  nextVisibilityChangeAt: number | null;
+}
+
 export interface DraftLink {
   id: string;
   url: string;

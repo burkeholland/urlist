@@ -1,4 +1,4 @@
-import type { LinkWithId } from './types';
+import type { LinkWithId, PublicListWithLinks } from './types';
 
 export const DEFAULT_VISIBLE_TIMEZONE = 'UTC';
 
@@ -69,4 +69,23 @@ export function filterVisibleLinks<T extends LinkWithId>(links: T[], now = Date.
 
 export function withVisibleLinks<T extends { links: LinkWithId[] }>(list: T, now = Date.now()): T {
   return { ...list, links: filterVisibleLinks(list.links, now) };
+}
+
+export function getNextVisibilityChangeAt(links: LinkScheduleFields[], now = Date.now()): number | null {
+  const next = links
+    .flatMap((link) => [link.visibleFrom, link.visibleUntil])
+    .filter((timestamp): timestamp is number => timestamp != null && timestamp > now)
+    .sort((a, b) => a - b)[0];
+
+  return next ?? null;
+}
+
+export function toPublicListPayload<T extends Omit<PublicListWithLinks, 'nextVisibilityChangeAt'>>(
+  list: T,
+  now = Date.now(),
+): PublicListWithLinks {
+  return {
+    ...withVisibleLinks(list, now),
+    nextVisibilityChangeAt: getNextVisibilityChangeAt(list.links, now),
+  };
 }

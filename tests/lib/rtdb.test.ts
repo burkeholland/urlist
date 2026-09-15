@@ -74,6 +74,10 @@ function createMockDb(seed: Record<string, Doc[]> = {}) {
   return db;
 }
 
+function asCosmosDb(db: ReturnType<typeof createMockDb>): ReturnType<typeof getDb> {
+  return db as unknown as ReturnType<typeof getDb>;
+}
+
 const fullLink = (id: string, position: number, pinned = false) => ({
   id,
   listId: 'list-1',
@@ -97,14 +101,14 @@ describe('rtdb', () => {
 
   it('resolveSlug returns listId when slug exists and null when not', async () => {
     const db = createMockDb({ slugs: [{ id: 'a~b', slug: 'a~b', listId: 'list-1' }] });
-    vi.mocked(getDb).mockReturnValue(db as any);
+    vi.mocked(getDb).mockReturnValue(asCosmosDb(db));
     await expect(resolveSlug('a/b')).resolves.toBe('list-1');
     await expect(resolveSlug('missing')).resolves.toBeNull();
   });
 
   it('getLinks queries the links container filtered by listId and ordered by position', async () => {
     const db = createMockDb({ links: [fullLink('a', 0)] });
-    vi.mocked(getDb).mockReturnValue(db as any);
+    vi.mocked(getDb).mockReturnValue(asCosmosDb(db));
     await getLinks('list-1');
     const linksQuery = db.container.mock.results
       .map((r: any) => r.value.items.query.mock.calls)
@@ -184,7 +188,7 @@ describe('rtdb', () => {
       ...legacy
     } = fullLink('a', 0);
     const db = createMockDb({ links: [legacy] });
-    vi.mocked(getDb).mockReturnValue(db as any);
+    vi.mocked(getDb).mockReturnValue(asCosmosDb(db));
     const links = await getLinks('list-1');
     expect(links[0]).toEqual(expect.objectContaining({
       visibleFrom: null,
@@ -225,7 +229,7 @@ describe('rtdb', () => {
       lists: [{ id: 'list-1', slug: 's', description: 'old', ownerId: 'u1', createdAt: 1, updatedAt: 2 }],
       links: [fullLink('keep', 0)],
     });
-    vi.mocked(getDb).mockReturnValue(db as any);
+    vi.mocked(getDb).mockReturnValue(asCosmosDb(db));
     await createList({
       listId: 'list-2',
       slug: 'scheduled',

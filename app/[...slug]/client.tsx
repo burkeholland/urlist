@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { LinkCard } from '@/components/link-card';
 import { NavHeader } from '@/components/nav-header';
-import type { ListWithLinks, TrackEventPayload } from '@/lib/types';
+import type { PublicListWithLinks, TrackEventPayload } from '@/lib/types';
 
 const QRCodeSVG = dynamic(
   () => import('qrcode.react').then((m) => ({ default: m.QRCodeSVG })),
@@ -12,7 +12,7 @@ const QRCodeSVG = dynamic(
 );
 
 interface PublicListClientProps {
-  list: ListWithLinks;
+  list: PublicListWithLinks;
   slug: string;
   justPublished: boolean;
 }
@@ -85,9 +85,9 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
   );
 
   const refreshVisibleLinks = useCallback(() => {
-    fetch(`/api/lists/${currentList.listId}`, { cache: 'no-store' })
+    fetch(`/api/lists/${currentList.listId}?public=true`, { cache: 'no-store', credentials: 'omit' })
       .then((res) => (res.ok ? res.json() : null))
-      .then((data: ListWithLinks | null) => {
+      .then((data: PublicListWithLinks | null) => {
         if (data) setCurrentList(data);
       })
       .catch(() => {
@@ -96,21 +96,16 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
   }, [currentList.listId]);
 
   useEffect(() => {
-    const nextExpiration = currentList.links
-      .map((link) => link.visibleUntil)
-      .filter((timestamp): timestamp is number => timestamp != null && timestamp >= Date.now())
-      .sort((a, b) => a - b)[0];
-
     const intervalId = window.setInterval(refreshVisibleLinks, 60000);
-    const timeoutId = nextExpiration != null
-      ? window.setTimeout(refreshVisibleLinks, Math.max(0, nextExpiration - Date.now() + 100))
+    const timeoutId = currentList.nextVisibilityChangeAt != null
+      ? window.setTimeout(refreshVisibleLinks, Math.max(0, currentList.nextVisibilityChangeAt - Date.now() + 100))
       : null;
 
     return () => {
       window.clearInterval(intervalId);
       if (timeoutId != null) window.clearTimeout(timeoutId);
     };
-  }, [currentList.links, refreshVisibleLinks]);
+  }, [currentList.nextVisibilityChangeAt, refreshVisibleLinks]);
 
   return (
     <div>
