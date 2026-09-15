@@ -5,11 +5,12 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { NavHeader } from '@/components/nav-header';
 import { SlugInput } from '@/components/slug-input';
 import { UrlInput } from '@/components/url-input';
-import { SortableLinkList } from '@/components/sortable-link-list';
+import { SectionedLinkList } from '@/components/sectioned-link-list';
 import { PublishButton } from '@/components/publish-button';
 import { useDraft } from '@/hooks/use-draft';
 import { useDebounce } from '@/hooks/use-debounce';
 import { validateSlugFormat } from '@/lib/slug';
+import { MAX_SECTION_NAME_LENGTH, MAX_SECTIONS, reindexLinksBySection, sortSections } from '@/lib/sections';
 import type { DraftLink, SlugValidationStatus } from '@/lib/types';
 import { nanoid } from 'nanoid';
 
@@ -22,12 +23,15 @@ function ComposeContent() {
     setSlug,
     description,
     setDescription,
+    sections,
+    setSections,
     links,
+    setLinks,
     loaded,
     addLink,
     updateLink,
     removeLink,
-    reorderLinks,
+    moveLinkToSection,
     pinLink,
     clearDraft,
   } = useDraft();
@@ -36,7 +40,14 @@ function ComposeContent() {
   const [error, setError] = useState<string | null>(null);
   const [slugApiResult, setSlugApiResult] = useState<{ available: boolean; slug: string } | null>(null);
   const [initialUrlProcessed, setInitialUrlProcessed] = useState(false);
+  const [targetSectionId, setTargetSectionId] = useState(sections[0].id);
   const debouncedSlug = useDebounce(slug, 400);
+  const orderedSections = useMemo(() => sortSections(sections), [sections]);
+  const sectionValidationError = useMemo(() => {
+    if (sections.length > MAX_SECTIONS) return `Lists can have up to ${MAX_SECTIONS} sections.`;
+    if (sections.some((section) => section.name.trim().length === 0)) return 'Every section needs a heading.';
+    return null;
+  }, [sections]);
 
   // Derive slug status from state
   const slugStatus: SlugValidationStatus = useMemo(() => {
@@ -66,6 +77,12 @@ function ComposeContent() {
     return () => controller.abort();
   }, [debouncedSlug]);
 
+  useEffect(() => {
+    if (!sections.some((section) => section.id === targetSectionId)) {
+      setTargetSectionId(sections[0].id);
+    }
+  }, [sections, targetSectionId]);
+
   const handleAddUrl = useCallback(
     (url: string) => {
       setError(null);
@@ -73,6 +90,7 @@ function ComposeContent() {
       const newLink: DraftLink = {
         id: linkId,
         url,
+        sectionId: targetSectionId,
         position: links.length,
         pinned: false,
         ogTitle: null,
@@ -106,8 +124,40 @@ function ComposeContent() {
           updateLink(linkId, { ogLoading: false });
         });
     },
-    [links.length, addLink, updateLink]
+    [links.length, targetSectionId, addLink, updateLink]
   );
+
+  const handleAddSection = useCallback(() => {
+    if (sections.length >= MAX_SECTIONS) {
+      setError(`Lists can have up to ${MAX_SECTIONS} sections.`);
+      return;
+    }
+    const section = {
+      id: `section-${nanoid(8)}`,
+      name: `Section ${sections.length + 1}`,
+      position: sections.length,
+    };
+    setSections((prev) => [...prev, section]);
+    setTargetSectionId(section.id);
+  }, [sections.length, setSections]);
+
+  const handleRenameSection = useCallback((sectionId: string, name: string) => {
+    setSections((prev) => prev.map((section) => (
+      section.id === sectionId ? { ...section, name: name.slice(0, MAX_SECTION_NAME_LENGTH) } : section
+    )));
+  }, [setSections]);
+
+  const handleDeleteSection = useCallback((sectionId: string) => {
+    if (sections.length <= 1) return;
+    const remainingSections = sortSections(sections.filter((section) => section.id !== sectionId))
+      .map((section, position) => ({ ...section, position }));
+    const fallbackSectionId = remainingSections[0].id;
+    setSections(remainingSections);
+    setLinks((prev) => reindexLinksBySection(prev.map((link) => (
+      link.sectionId === sectionId ? { ...link, sectionId: fallbackSectionId } : link
+    )), remainingSections));
+    setTargetSectionId((current) => (current === sectionId ? fallbackSectionId : current));
+  }, [sections, setSections, setLinks]);
 
   // Auto-add URL from query param, then strip it so refreshes don't re-add
   useEffect(() => {
@@ -134,15 +184,17 @@ function ComposeContent() {
         body: JSON.stringify({
           slug: slug || undefined,
           description,
-          links: links.map((l, i) => ({
+          links: links.map((l) => ({
             url: l.url,
-            position: i,
+            sectionId: l.sectionId,
+            position: l.position,
             pinned: l.pinned,
             ogTitle: l.ogTitle,
             ogDescription: l.ogDescription,
             ogImage: l.ogImage,
             ogSiteName: l.ogSiteName,
           })),
+          sections: orderedSections.map((section, position) => ({ ...section, name: section.name.trim(), position })),
         }),
       });
 
@@ -163,6 +215,7 @@ function ComposeContent() {
 
   const isPublishDisabled =
     links.length === 0 ||
+    !!sectionValidationError ||
     slugStatus === 'invalid' ||
     slugStatus === 'taken' ||
     slugStatus === 'checking';
@@ -252,14 +305,37 @@ function ComposeContent() {
             size="large"
           />
 
-          <div className="section-head">
-            <h2>
-              Links <span className="count-badge">{links.length}</span>
-            </h2>
-          </div>
+          {orderedSections.length > 1 ? (
+            <label className="target-section">
+              <span className="label">New links go to</span>
+              <select className="input" value={targetSectionId} onChange={(e) => setTargetSectionId(e.target.value)}>
+                {orderedSections.map((section) => (
+                  <option key={section.id} value={section.id}>{section.name}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          {sectionValidationError && (
+            <div style={{ color: 'var(--danger)', fontSize: '15px', marginBottom: 12 }}>
+              {sectionValidationError}
+            </div>
+          )}
 
           <div className="pub-links">
-            <SortableLinkList links={links} onReorder={reorderLinks} onDelete={removeLink} onUpdate={updateLink} onPin={pinLink} />
+            <SectionedLinkList
+              sections={orderedSections}
+              links={links}
+              onAddSection={handleAddSection}
+              onRenameSection={handleRenameSection}
+              onDeleteSection={handleDeleteSection}
+              onReorderSections={setSections}
+              onLinksChange={setLinks}
+              onDeleteLink={removeLink}
+              onUpdateLink={updateLink}
+              onPinLink={pinLink}
+              onMoveLinkToSection={moveLinkToSection}
+            />
           </div>
 
           <div className="compose-actions">
@@ -292,6 +368,12 @@ function ComposeContent() {
           justify-content: space-between;
           margin-bottom: 8px;
           padding-bottom: 0;
+        }
+
+        .target-section {
+          display: block;
+          max-width: 280px;
+          margin: -4px 0 14px;
         }
 
         .section-head h2 {

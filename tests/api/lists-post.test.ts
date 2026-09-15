@@ -72,6 +72,33 @@ describe('POST /api/lists', () => {
     expect(res.body.error.code).toBe('TOO_MANY_LINKS');
   });
 
+  it('returns 400 when section limits are exceeded', async () => {
+    const res = await json(await POST(req({
+      links: [{ url: 'example.com', position: 0 }],
+      sections: Array.from({ length: 51 }, (_, i) => ({ id: `s${i}`, name: `Section ${i}`, position: i })),
+    })));
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('TOO_MANY_SECTIONS');
+  });
+
+  it('returns 400 when a link references an unknown section', async () => {
+    const res = await json(await POST(req({
+      links: [{ url: 'example.com', sectionId: 'missing', position: 0 }],
+      sections: [{ id: 'known', name: 'Known', position: 0 }],
+    })));
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ORPHAN_SECTION_REFERENCE');
+  });
+
+  it('returns 400 when section IDs are duplicated', async () => {
+    const res = await json(await POST(req({
+      links: [{ url: 'example.com', sectionId: 'a', position: 0 }],
+      sections: [{ id: 'a', name: 'A', position: 0 }, { id: 'a', name: 'Again', position: 1 }],
+    })));
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('DUPLICATE_SECTION_ID');
+  });
+
   it('returns 400 for invalid URL in links', async () => {
     const res = await json(await POST(req({ links: [{ url: 'not a url', position: 0 }] })));
     expect(res.status).toBe(400);
@@ -100,6 +127,29 @@ describe('POST /api/lists', () => {
     expect(res.body.publicUrl).toBe('/my-list');
     expect(res.body.listId).toEqual(expect.any(String));
     expect(createList).toHaveBeenCalledWith(expect.objectContaining({ ownerId: 'u1', slug: 'my-list' }));
+  });
+
+  it('passes ordered sections and link section IDs to createList', async () => {
+    const res = await json(await POST(req({
+      slug: 'sectioned',
+      description: '',
+      sections: [{ id: 'b', name: 'Beta', position: 1 }, { id: 'a', name: 'Alpha', position: 0 }],
+      links: [{ url: 'example.com', sectionId: 'a', position: 0 }],
+    })));
+    expect(res.status).toBe(201);
+    expect(createList).toHaveBeenCalledWith(expect.objectContaining({
+      sections: [{ id: 'a', name: 'Alpha', position: 0 }, { id: 'b', name: 'Beta', position: 1 }],
+      links: [expect.objectContaining({ sectionId: 'a' })],
+    }));
+  });
+
+  it('uses a default section for legacy create payloads', async () => {
+    const res = await json(await POST(req(validBody)));
+    expect(res.status).toBe(201);
+    expect(createList).toHaveBeenCalledWith(expect.objectContaining({
+      sections: [{ id: 'default', name: 'Links', position: 0 }],
+      links: [expect.objectContaining({ sectionId: 'default' })],
+    }));
   });
 
   it('logs the publish with list metadata', async () => {

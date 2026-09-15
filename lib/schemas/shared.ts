@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_SECTION_NAME_LENGTH, MAX_SECTIONS } from '@/lib/sections';
 
 // --- Constants ---
 
@@ -38,6 +39,7 @@ export function sanitizeText(value: unknown, maxLength: number): string | null {
 
 const LinkInputSchema = z.object({
   url: z.string().min(1),
+  sectionId: z.string().min(1).optional(),
   position: z.number().int().min(0),
   pinned: z.boolean().optional().default(false),
   ogTitle: z.string().nullable().optional(),
@@ -46,9 +48,16 @@ const LinkInputSchema = z.object({
   ogSiteName: z.string().nullable().optional(),
 });
 
+const SectionInputSchema = z.object({
+  id: z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/, 'Section ID can only contain letters, numbers, underscores, and hyphens'),
+  name: z.string().trim().min(1, 'Section name is required').max(MAX_SECTION_NAME_LENGTH, `Section name exceeds ${MAX_SECTION_NAME_LENGTH} characters`),
+  position: z.number().int().min(0),
+});
+
 export const CreateListSchema = z.object({
   slug: z.string().optional(),
   description: z.string().optional().default(''),
+  sections: z.array(SectionInputSchema).min(1).max(MAX_SECTIONS, `List exceeds the maximum of ${MAX_SECTIONS} sections`).optional(),
   links: z
     .array(LinkInputSchema)
     .min(1, 'List must contain at least one link')
@@ -63,5 +72,6 @@ export const UpdateListSchema = z.object({
   slug: z.string().optional(),
   description: z.string().optional(),
   updatedAt: z.number(),
+  sections: z.array(SectionInputSchema).min(1).max(MAX_SECTIONS, `List exceeds the maximum of ${MAX_SECTIONS} sections`).optional(),
   links: z.array(UpdateLinkSchema).max(MAX_LINKS).optional(),
 });

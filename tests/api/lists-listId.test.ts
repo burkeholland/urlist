@@ -39,7 +39,7 @@ describe('GET /api/lists/[listId]', () => {
   });
 
   it('returns list with links when found', async () => {
-    vi.mocked(getListWithLinks).mockResolvedValue({ listId: 'list-1', ...list, links: [] });
+    vi.mocked(getListWithLinks).mockResolvedValue({ listId: 'list-1', ...list, sections: [{ id: 'default', name: 'Links', position: 0 }], links: [] });
     const res = await json(await GET(req('GET'), ctx));
     expect(res.status).toBe(200);
     expect(res.body.listId).toBe('list-1');
@@ -114,6 +114,72 @@ describe('PATCH /api/lists/[listId]', () => {
     expect(res.body).toEqual({ listId: 'list-1', updatedAt: 20 });
   });
 
+  it('passes section changes and sectioned links to updateList', async () => {
+    const res = await json(await PATCH(req('PATCH', {
+      updatedAt: 10,
+      sections: [{ id: 'a', name: 'Alpha', position: 0 }, { id: 'b', name: 'Beta', position: 1 }],
+      links: [{ id: 'a-link', url: 'example.com', sectionId: 'b', position: 0 }],
+    }), ctx));
+    expect(res.status).toBe(200);
+    expect(updateList).toHaveBeenCalledWith(expect.objectContaining({
+      sections: [{ id: 'a', name: 'Alpha', position: 0 }, { id: 'b', name: 'Beta', position: 1 }],
+      links: [expect.objectContaining({ id: 'a-link', sectionId: 'b', url: 'https://example.com/' })],
+    }));
+  });
+
+  it('returns 400 for links that reference unknown sections', async () => {
+    const res = await json(await PATCH(req('PATCH', {
+      updatedAt: 10,
+      sections: [{ id: 'a', name: 'Alpha', position: 0 }],
+      links: [{ id: 'a-link', url: 'example.com', sectionId: 'missing', position: 0 }],
+    }), ctx));
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ORPHAN_SECTION_REFERENCE');
+  });
+
+  it('returns 400 for duplicate section IDs', async () => {
+    const res = await json(await PATCH(req('PATCH', {
+      updatedAt: 10,
+      sections: [{ id: 'a', name: 'Alpha', position: 0 }, { id: 'a', name: 'Again', position: 1 }],
+    }), ctx));
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('DUPLICATE_SECTION_ID');
+  });
+
+  it('returns 400 when a sections-only update would orphan existing links', async () => {
+    vi.mocked(getListWithLinks).mockResolvedValue({
+      listId: 'list-1',
+      ...list,
+      sections: [{ id: 'a', name: 'A', position: 0 }, { id: 'b', name: 'B', position: 1 }],
+      links: [{
+        id: 'b-link',
+        url: 'https://example.com',
+        sectionId: 'b',
+        position: 0,
+        pinned: false,
+        ogTitle: null,
+        ogDescription: null,
+        ogImage: null,
+        ogSiteName: null,
+        createdAt: 1,
+      }],
+    });
+    const res = await json(await PATCH(req('PATCH', {
+      updatedAt: 10,
+      sections: [{ id: 'a', name: 'Alpha', position: 0 }],
+    }), ctx));
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ORPHAN_SECTION_REFERENCE');
+  });
+
+  it('defaults legacy PATCH links into the default section', async () => {
+    const res = await json(await PATCH(req('PATCH', { updatedAt: 10, links: [{ id: 'a', url: 'example.com', position: 0 }] }), ctx));
+    expect(res.status).toBe(200);
+    expect(updateList).toHaveBeenCalledWith(expect.objectContaining({
+      links: [expect.objectContaining({ id: 'a', sectionId: 'default' })],
+    }));
+  });
+
   it('logs updates with description/links change flags', async () => {
     const { log } = await import('@/lib/logger');
     await json(await PATCH(req('PATCH', { updatedAt: 10, description: 'new', links: [{ id: 'a', url: 'example.com', position: 0 }] }), ctx));
@@ -121,7 +187,7 @@ describe('PATCH /api/lists/[listId]', () => {
       level: 'info',
       message: 'List updated',
       service: 'api-lists',
-      data: { listId: 'list-1', hasDescriptionChange: true, hasLinksChange: true },
+      data: { listId: 'list-1', hasDescriptionChange: true, hasSectionsChange: false, hasLinksChange: true },
     }));
   });
 
@@ -129,7 +195,7 @@ describe('PATCH /api/lists/[listId]', () => {
     const { log } = await import('@/lib/logger');
     await json(await PATCH(req('PATCH', { updatedAt: 10 }), ctx));
     expect(log).toHaveBeenCalledWith(expect.objectContaining({
-      data: { listId: 'list-1', hasDescriptionChange: false, hasLinksChange: false },
+      data: { listId: 'list-1', hasDescriptionChange: false, hasSectionsChange: false, hasLinksChange: false },
     }));
   });
 

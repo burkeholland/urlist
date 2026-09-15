@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { LinkCard } from '@/components/link-card';
 import { NavHeader } from '@/components/nav-header';
+import { getPublicSectionGroups, hasExplicitSections, sortLinks } from '@/lib/sections';
 import type { ListWithLinks, TrackEventPayload } from '@/lib/types';
 
 const QRCodeSVG = dynamic(
@@ -83,6 +84,10 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
     [list.listId],
   );
 
+  const pinnedLinks = sortLinks(list.links.filter((link) => link.pinned));
+  const sectionGroups = getPublicSectionGroups(list.links, list.sections);
+  const showSectionHeadings = hasExplicitSections(list.sections);
+
   return (
     <div>
       <NavHeader />
@@ -144,10 +149,24 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
 
         {view === 'list' ? (
           <div className="pub-links" role="tabpanel" aria-label="Link list">
-            {[...list.links].sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false)).map((link) => (
+            {pinnedLinks.map((link) => (
               <div key={link.id} onClick={() => handleLinkClick(link.id)}>
                 <LinkCard link={link} isPublicView />
               </div>
+            ))}
+            {sectionGroups.map((group) => (
+              <section key={group.section.id} className="pub-section" aria-labelledby={`section-${group.section.id}`}>
+                {showSectionHeadings ? (
+                  <h2 id={`section-${group.section.id}`} className="pub-section-title">{group.section.name}</h2>
+                ) : null}
+                <div className="pub-section-links">
+                  {group.links.map((link) => (
+                    <div key={link.id} onClick={() => handleLinkClick(link.id)}>
+                      <LinkCard link={link} isPublicView />
+                    </div>
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
         ) : (
@@ -282,6 +301,30 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
         }
 
         .pub-links {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .pub-section {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          margin-top: 10px;
+        }
+
+        .pub-section:first-child {
+          margin-top: 0;
+        }
+
+        .pub-section-title {
+          font-size: 15px;
+          font-weight: 600;
+          color: var(--text);
+          margin: 8px 0 2px;
+        }
+
+        .pub-section-links {
           display: flex;
           flex-direction: column;
           gap: 6px;

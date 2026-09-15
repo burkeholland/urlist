@@ -11,6 +11,7 @@ import { reserveSlug, cleanupFailedPublish, createList, getUserListIds, getLists
 import { getListAnalyticsSummary } from '@/lib/analytics';
 import { checkRateLimit, getClientIp, RATE_LIMITS } from '@/lib/rate-limiter';
 import { log } from '@/lib/logger';
+import { createDefaultSection, findDuplicateSectionId, findOrphanSectionReference, normalizeSections } from '@/lib/sections';
 import {
   CreateListSchema,
   sanitizeText,
@@ -88,12 +89,40 @@ export async function POST(request: NextRequest) {
       } else if (firstError.message.includes('maximum')) {
         code = 'TOO_MANY_LINKS';
       }
+    } else if (firstError?.path?.includes('sections')) {
+      code = firstError.message.includes('maximum') ? 'TOO_MANY_SECTIONS' : 'INVALID_SECTIONS';
     }
 
     return NextResponse.json({ error: { code, message } }, { status: 400 });
   }
 
   const { description, links } = parsed.data;
+  const sections = normalizeSections(parsed.data.sections ?? [createDefaultSection()]);
+  const duplicateSectionId = findDuplicateSectionId(parsed.data.sections ?? []);
+  if (duplicateSectionId) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'DUPLICATE_SECTION_ID',
+          message: `Section ID '${duplicateSectionId}' is used more than once.`,
+        },
+      },
+      { status: 400 },
+    );
+  }
+  const orphanSectionId = findOrphanSectionReference(links, sections);
+  if (orphanSectionId) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'ORPHAN_SECTION_REFERENCE',
+          message: `A link references unknown section '${orphanSectionId}'.`,
+        },
+      },
+      { status: 400 },
+    );
+  }
+  const fallbackSectionId = sections[0].id;
   const isCustomSlug = !!parsed.data.slug;
   let slug = parsed.data.slug || '';
 
@@ -180,6 +209,7 @@ export async function POST(request: NextRequest) {
   const sanitizedLinks = links.map((link) => ({
     id: generateLinkId(),
     url: link.url,
+    sectionId: link.sectionId ?? fallbackSectionId,
     position: link.position,
     pinned: link.pinned,
     ogTitle: sanitizeText(link.ogTitle, MAX_OG_TITLE_LENGTH),
@@ -195,6 +225,7 @@ export async function POST(request: NextRequest) {
       slug,
       description: description.slice(0, 280),
       ownerId: authResult.uid,
+      sections,
       links: sanitizedLinks,
     });
   } catch (error) {

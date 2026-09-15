@@ -6,10 +6,12 @@ export interface ListRecord {
   ownerId: string | null;
   createdAt: number;
   updatedAt: number;
+  sections?: ListSection[];
 }
 
 export interface LinkRecord {
   url: string;
+  sectionId?: string;
   position: number;
   pinned: boolean;
   ogTitle: string | null;
@@ -30,12 +32,22 @@ export interface ListWithLinks {
   ownerId: string | null;
   createdAt: number;
   updatedAt: number;
+  sections: ListSection[];
   links: LinkWithId[];
 }
+
+export interface ListSection {
+  id: string;
+  name: string;
+  position: number;
+}
+
+export type DraftSection = ListSection;
 
 export interface DraftLink {
   id: string;
   url: string;
+  sectionId: string;
   position: number;
   pinned: boolean;
   ogTitle: string | null;
@@ -48,6 +60,7 @@ export interface DraftLink {
 export interface Draft {
   slug: string;
   description: string;
+  sections: DraftSection[];
   links: DraftLink[];
   savedAt: number;
 }
