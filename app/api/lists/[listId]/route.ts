@@ -4,6 +4,7 @@ import { getList, getListWithLinks, updateList, deleteList } from '@/lib/rtdb';
 import { normalizeUrl, isValidHttpUrl } from '@/lib/url';
 import { generateLinkId } from '@/lib/slug';
 import { log } from '@/lib/logger';
+import { createDefaultSection, findDuplicateSectionId, findOrphanSectionReference, normalizeSections } from '@/lib/sections';
 import {
   UpdateListSchema,
   sanitizeText,
@@ -95,6 +96,37 @@ export async function PATCH(
       );
     }
 
+    const sections = parsed.data.sections === undefined
+      ? undefined
+      : normalizeSections(parsed.data.sections);
+    const sectionsForValidation = sections ?? normalizeSections(list.sections ?? [createDefaultSection()]);
+    const duplicateSectionId = findDuplicateSectionId(parsed.data.sections ?? []);
+    if (duplicateSectionId) {
+      return NextResponse.json(
+        {
+          error: {
+            code: 'DUPLICATE_SECTION_ID',
+            message: `Section ID '${duplicateSectionId}' is used more than once.`,
+          },
+        },
+        { status: 400 },
+      );
+    }
+    const linksForReferenceCheck = links ?? (sections ? (await getListWithLinks(listId))?.links : undefined);
+    const orphanSectionId = linksForReferenceCheck ? findOrphanSectionReference(linksForReferenceCheck, sectionsForValidation) : null;
+    if (orphanSectionId) {
+      return NextResponse.json(
+        {
+          error: {
+            code: 'ORPHAN_SECTION_REFERENCE',
+            message: `A link references unknown section '${orphanSectionId}'.`,
+          },
+        },
+        { status: 400 },
+      );
+    }
+    const fallbackSectionId = sectionsForValidation[0].id;
+
     // Validate description
     if (description !== undefined && description.length > 280) {
       return NextResponse.json(
@@ -113,6 +145,7 @@ export async function PATCH(
       | {
           id: string;
           url: string;
+          sectionId: string;
           position: number;
           pinned: boolean;
           ogTitle: string | null;
@@ -142,6 +175,7 @@ export async function PATCH(
         sanitizedLinks.push({
           id: link.id || generateLinkId(),
           url: urlResult.url,
+          sectionId: link.sectionId ?? fallbackSectionId,
           position: link.position,
           pinned: link.pinned,
           ogTitle: sanitizeText(link.ogTitle, MAX_OG_TITLE_LENGTH),
@@ -155,6 +189,7 @@ export async function PATCH(
     const newUpdatedAt = await updateList({
       listId,
       description: description?.slice(0, 280),
+      sections,
       links: sanitizedLinks,
     });
 
@@ -165,6 +200,7 @@ export async function PATCH(
       data: {
         listId,
         hasDescriptionChange: description !== undefined,
+        hasSectionsChange: sections !== undefined,
         hasLinksChange: links !== undefined,
       },
     });

@@ -184,6 +184,17 @@ describe('rtdb', () => {
     expect(result?.links).toHaveLength(1);
   });
 
+  it('getListWithLinks defaults legacy lists and links to one section', async () => {
+    const db = createMockDb({
+      lists: [{ id: 'list-1', slug: 's', description: '', ownerId: 'u1', createdAt: 1, updatedAt: 2 }],
+      links: [{ ...fullLink('a', 0), sectionId: undefined }],
+    });
+    vi.mocked(getDb).mockReturnValue(db as any);
+    const result = await getListWithLinks('list-1');
+    expect(result?.sections).toEqual([{ id: 'default', name: 'Links', position: 0 }]);
+    expect(result?.links[0].sectionId).toBe('default');
+  });
+
   it('createList creates list, links, and userList records', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(100);
     const db = createMockDb();
@@ -192,6 +203,25 @@ describe('rtdb', () => {
     expect(db.data.get('lists')!.get('list-1')!.updatedAt).toBe(100);
     expect(db.data.get('links')!.get('a')!.listId).toBe('list-1');
     expect(db.data.get('userLists')!.get('u1_list-1')!.uid).toBe('u1');
+  });
+
+  it('createList persists ordered sections and link section IDs', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(100);
+    const db = createMockDb();
+    vi.mocked(getDb).mockReturnValue(db as any);
+    await createList({
+      listId: 'list-1',
+      slug: 's',
+      description: 'd',
+      ownerId: 'u1',
+      sections: [{ id: 'b', name: 'Beta', position: 1 }, { id: 'a', name: 'Alpha', position: 0 }],
+      links: [{ ...fullLink('a', 0), sectionId: 'a' }],
+    });
+    expect(db.data.get('lists')!.get('list-1')!.sections).toEqual([
+      { id: 'a', name: 'Alpha', position: 0 },
+      { id: 'b', name: 'Beta', position: 1 },
+    ]);
+    expect(db.data.get('links')!.get('a')!.sectionId).toBe('a');
   });
 
   it('updateList patches list, upserts current links, and deletes removed links', async () => {
@@ -205,6 +235,29 @@ describe('rtdb', () => {
     expect(db.data.get('lists')!.get('list-1')!.description).toBe('new');
     expect(db.data.get('links')!.has('remove')).toBe(false);
     expect(db.data.get('links')!.has('add')).toBe(true);
+  });
+
+  it('updateList patches sections and preserves link metadata while moving sections', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(250);
+    const db = createMockDb({
+      lists: [{ id: 'list-1', slug: 's', description: 'old', ownerId: 'u1', createdAt: 1, updatedAt: 2 }],
+      links: [{ ...fullLink('keep', 0), sectionId: 'a', ogTitle: 'Old title' }],
+    });
+    vi.mocked(getDb).mockReturnValue(db as any);
+    await updateList({
+      listId: 'list-1',
+      sections: [{ id: 'a', name: 'A', position: 0 }, { id: 'b', name: 'B', position: 1 }],
+      links: [{ ...fullLink('keep', 0), sectionId: 'b', ogTitle: 'Old title' }],
+    });
+    expect(db.data.get('lists')!.get('list-1')!.sections).toEqual([
+      { id: 'a', name: 'A', position: 0 },
+      { id: 'b', name: 'B', position: 1 },
+    ]);
+    expect(db.data.get('links')!.get('keep')!).toEqual(expect.objectContaining({
+      sectionId: 'b',
+      ogTitle: 'Old title',
+      createdAt: 1,
+    }));
   });
 
   it('updateList always patches updatedAt and only patches description when provided', async () => {

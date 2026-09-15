@@ -18,7 +18,7 @@ import {
 } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
-import type { DraftLink } from '@/lib/types';
+import type { DraftLink, DraftSection } from '@/lib/types';
 import { LinkCard } from './link-card';
 
 interface SortableLinkListProps {
@@ -27,9 +27,32 @@ interface SortableLinkListProps {
   onDelete: (id: string) => void;
   onUpdate?: (id: string, updates: Partial<DraftLink>) => void;
   onPin?: (id: string) => void;
+  sections?: DraftSection[];
+  onMoveToSection?: (id: string, sectionId: string) => void;
+  emptyMessage?: string;
 }
 
-function SortableItem({ link, onDelete, onUpdate, onPin }: { link: DraftLink; onDelete: (id: string) => void; onUpdate?: (id: string, updates: Partial<DraftLink>) => void; onPin?: (id: string) => void }) {
+function SortableItem({
+  link,
+  index,
+  total,
+  sections,
+  onDelete,
+  onUpdate,
+  onPin,
+  onMoveToSection,
+  onMoveWithinSection,
+}: {
+  link: DraftLink;
+  index: number;
+  total: number;
+  sections?: DraftSection[];
+  onDelete: (id: string) => void;
+  onUpdate?: (id: string, updates: Partial<DraftLink>) => void;
+  onPin?: (id: string) => void;
+  onMoveToSection?: (id: string, sectionId: string) => void;
+  onMoveWithinSection: (from: number, to: number) => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: link.id,
   });
@@ -63,12 +86,58 @@ function SortableItem({ link, onDelete, onUpdate, onPin }: { link: DraftLink; on
         <div style={{ flex: 1, minWidth: 0 }}>
           <LinkCard link={link} onDelete={onDelete} onUpdate={onUpdate} onPin={onPin} />
         </div>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+            alignSelf: 'stretch',
+            justifyContent: 'center',
+          }}
+        >
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={() => onMoveWithinSection(index, index - 1)}
+            disabled={index === 0}
+            aria-label={`Move ${link.ogTitle || link.url} up`}
+            style={{ height: 24, padding: '0 8px', opacity: index === 0 ? 0.45 : undefined }}
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={() => onMoveWithinSection(index, index + 1)}
+            disabled={index === total - 1}
+            aria-label={`Move ${link.ogTitle || link.url} down`}
+            style={{ height: 24, padding: '0 8px', opacity: index === total - 1 ? 0.45 : undefined }}
+          >
+            ↓
+          </button>
+        </div>
+        {sections && onMoveToSection && sections.length > 1 ? (
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 2, width: 130, fontSize: 12, color: 'var(--text-muted)' }}>
+            Section
+            <select
+              className="input"
+              value={link.sectionId}
+              onChange={(e) => onMoveToSection(link.id, e.target.value)}
+              aria-label={`Move ${link.ogTitle || link.url} to section`}
+              style={{ height: 30, fontSize: 13, padding: '0 6px' }}
+            >
+              {sections.map((section) => (
+                <option key={section.id} value={section.id}>{section.name}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </div>
     </div>
   );
 }
 
-export function SortableLinkList({ links, onReorder, onDelete, onUpdate, onPin }: SortableLinkListProps) {
+export function SortableLinkList({ links, onReorder, onDelete, onUpdate, onPin, sections, onMoveToSection, emptyMessage = 'No links added yet. Paste a URL above to get started.' }: SortableLinkListProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -96,9 +165,14 @@ export function SortableLinkList({ links, onReorder, onDelete, onUpdate, onPin }
           color: 'var(--text-muted)',
         }}
       >
-        No links added yet. Paste a URL above to get started.
+        {emptyMessage}
       </div>
     );
+  }
+
+  function handleMoveWithinSection(from: number, to: number) {
+    if (to < 0 || to >= links.length || from === to) return;
+    onReorder(arrayMove(links, from, to));
   }
 
   return (
@@ -110,8 +184,19 @@ export function SortableLinkList({ links, onReorder, onDelete, onUpdate, onPin }
     >
       <SortableContext items={links.map((l) => l.id)} strategy={verticalListSortingStrategy}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {links.map((link) => (
-            <SortableItem key={link.id} link={link} onDelete={onDelete} onUpdate={onUpdate} onPin={onPin} />
+          {links.map((link, index) => (
+            <SortableItem
+              key={link.id}
+              link={link}
+              index={index}
+              total={links.length}
+              sections={sections}
+              onDelete={onDelete}
+              onUpdate={onUpdate}
+              onPin={onPin}
+              onMoveToSection={onMoveToSection}
+              onMoveWithinSection={handleMoveWithinSection}
+            />
           ))}
         </div>
       </SortableContext>

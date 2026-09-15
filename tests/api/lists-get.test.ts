@@ -24,7 +24,7 @@ describe('GET /api/lists', () => {
     vi.clearAllMocks();
     vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u1' } as any);
     vi.mocked(getUserListIds).mockResolvedValue(['list-1']);
-    vi.mocked(getListsWithLinks).mockResolvedValue([{ listId: 'list-1', slug: 's', description: '', ownerId: 'u1', createdAt: 1, updatedAt: 2, links: [] }]);
+    vi.mocked(getListsWithLinks).mockResolvedValue([{ listId: 'list-1', slug: 's', description: '', ownerId: 'u1', createdAt: 1, updatedAt: 2, sections: [{ id: 'default', name: 'Links', position: 0 }], links: [] }]);
     vi.mocked(getListAnalyticsSummary).mockResolvedValue({ totalViews: 3, totalClicks: 4 } as any);
   });
 

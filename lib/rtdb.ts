@@ -1,7 +1,20 @@
 import { getDb } from './cosmos';
-import { ListRecord, LinkWithId, ListWithLinks } from './types';
+import { ListRecord, LinkWithId, ListSection, ListWithLinks } from './types';
 import { encodeSlugForKey, validateSlugFormat } from './slug';
 import { log } from './logger';
+import { normalizeLinkSections, normalizeSections } from './sections';
+
+type LinkWrite = {
+  id: string;
+  url: string;
+  sectionId?: string;
+  position: number;
+  pinned: boolean;
+  ogTitle: string | null;
+  ogDescription: string | null;
+  ogImage: string | null;
+  ogSiteName: string | null;
+};
 
 // Read a list by listId
 export async function getList(listId: string): Promise<ListRecord | null> {
@@ -10,7 +23,8 @@ export async function getList(listId: string): Promise<ListRecord | null> {
     .item(listId, listId)
     .read<ListRecord & { id: string }>();
   if (!resource) return null;
-  const { id: _, ...record } = resource;
+  const record = { ...resource };
+  delete (record as Partial<typeof record>).id;
   return record as ListRecord;
 }
 
@@ -18,16 +32,24 @@ export async function getList(listId: string): Promise<ListRecord | null> {
 export async function getLinks(listId: string): Promise<LinkWithId[]> {
   const { resources } = await getDb()
     .container('links')
-    .items.query<{ id: string; listId: string; url: string; position: number; pinned: boolean | undefined; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null; createdAt: number }>({
+    .items.query<{ id: string; listId: string; url: string; sectionId: string | undefined; position: number; pinned: boolean | undefined; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null; createdAt: number }>({
       query: 'SELECT * FROM c WHERE c.listId = @listId ORDER BY c.position ASC',
       parameters: [{ name: '@listId', value: listId }],
     })
     .fetchAll();
 
-  const links = resources.map(({ listId: _listId, ...link }) => ({
-    ...link,
+  const links = resources.map((link) => ({
+    id: link.id,
+    url: link.url,
+    sectionId: link.sectionId,
+    position: link.position,
     pinned: link.pinned ?? false,
-  }) as LinkWithId);
+    ogTitle: link.ogTitle,
+    ogDescription: link.ogDescription,
+    ogImage: link.ogImage,
+    ogSiteName: link.ogSiteName,
+    createdAt: link.createdAt,
+  }));
 
   // Sort pinned-first in app layer to safely handle existing docs without the field
   return links.sort((a, b) => Number(b.pinned) - Number(a.pinned));
@@ -39,7 +61,8 @@ export async function getListWithLinks(listId: string): Promise<ListWithLinks | 
   if (!list) return null;
 
   const links = await getLinks(listId);
-  return { listId, ...list, links };
+  const sections = normalizeSections(list.sections);
+  return { listId, ...list, sections, links: normalizeLinkSections(links, sections) };
 }
 
 // Resolve slug to listId
@@ -128,9 +151,11 @@ export async function createList(params: {
   slug: string;
   description: string;
   ownerId: string | null;
-  links: { id: string; url: string; position: number; pinned: boolean; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null }[];
+  sections?: ListSection[];
+  links: LinkWrite[];
 }): Promise<void> {
   const { listId, slug, description, ownerId, links } = params;
+  const sections = normalizeSections(params.sections);
   const now = Date.now();
   const db = getDb();
 
@@ -139,6 +164,7 @@ export async function createList(params: {
     slug,
     description,
     ownerId,
+    sections,
     createdAt: now,
     updatedAt: now,
   });
@@ -150,6 +176,7 @@ export async function createList(params: {
         id: link.id,
         listId,
         url: link.url,
+        sectionId: link.sectionId ?? sections[0].id,
         position: link.position,
         pinned: link.pinned,
         ogTitle: link.ogTitle,
@@ -174,31 +201,36 @@ export async function createList(params: {
 export async function updateList(params: {
   listId: string;
   description?: string;
-  links?: { id: string; url: string; position: number; pinned: boolean; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null }[];
+  sections?: ListSection[];
+  links?: LinkWrite[];
 }): Promise<number> {
   const { listId, description, links } = params;
   const now = Date.now();
   const db = getDb();
+  const sections = params.sections === undefined ? undefined : normalizeSections(params.sections);
 
   const patchOps: { op: 'set'; path: string; value: unknown }[] = [
     { op: 'set', path: '/updatedAt', value: now },
   ];
   /* v8 ignore start -- V8 AST quirk: both runtime outcomes are asserted in tests, but the implicit else is unreachable to the coverage probe */
   if (description !== undefined) patchOps.push({ op: 'set', path: '/description', value: description });
+  if (sections !== undefined) patchOps.push({ op: 'set', path: '/sections', value: sections });
   await db.container('lists').item(listId, listId).patch(patchOps);
 
   if (links !== undefined) {
   /* v8 ignore stop */
     const linkContainer = db.container('links');
+    const sectionsForLinks = sections ?? normalizeSections((await getList(listId))?.sections);
 
     const { resources: existing } = await linkContainer.items
-      .query<{ id: string; listId: string }>({
-        query: 'SELECT c.id, c.listId FROM c WHERE c.listId = @listId',
+      .query<{ id: string; listId: string; createdAt?: number }>({
+        query: 'SELECT c.id, c.listId, c.createdAt FROM c WHERE c.listId = @listId',
         parameters: [{ name: '@listId', value: listId }],
       })
       .fetchAll();
 
     const newIds = new Set(links.map((l) => l.id));
+    const existingCreatedAtById = new Map(existing.map((link) => [link.id, link.createdAt]));
 
     // Create new/updated links first (safe — won't lose data on failure)
     await Promise.all(
@@ -207,13 +239,14 @@ export async function updateList(params: {
           id: link.id,
           listId,
           url: link.url,
+          sectionId: link.sectionId ?? sectionsForLinks[0].id,
           position: link.position,
           pinned: link.pinned,
           ogTitle: link.ogTitle,
           ogDescription: link.ogDescription,
           ogImage: link.ogImage,
           ogSiteName: link.ogSiteName,
-          createdAt: now,
+          createdAt: existingCreatedAtById.get(link.id) ?? now,
         }),
       ),
     );
@@ -292,7 +325,7 @@ export async function getListsWithLinks(listIds: string[]): Promise<ListWithLink
 
   // Single query for all links across all lists
   const { resources: allLinks } = await db.container('links').items
-    .query<{ id: string; listId: string; url: string; position: number; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null; createdAt: number }>({
+    .query<{ id: string; listId: string; url: string; sectionId: string | undefined; position: number; pinned: boolean | undefined; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null; createdAt: number }>({
       query: `SELECT * FROM c WHERE c.listId IN (${listIds.map((_, i) => `@id${i}`).join(',')}) ORDER BY c.position ASC`,
       parameters: listIds.map((id, i) => ({ name: `@id${i}`, value: id })),
     })
@@ -302,16 +335,18 @@ export async function getListsWithLinks(listIds: string[]): Promise<ListWithLink
   const linksByListId = new Map<string, LinkWithId[]>();
   for (const { listId: _listId, ...link } of allLinks) {
     const links = linksByListId.get(_listId) ?? [];
-    links.push(link as LinkWithId);
+    links.push({ ...link, pinned: link.pinned ?? false } as LinkWithId);
     linksByListId.set(_listId, links);
   }
 
   return lists.map((list) => {
     const { id, ...record } = list;
+    const sections = normalizeSections(record.sections);
     return {
       listId: id,
       ...record,
-      links: linksByListId.get(id) ?? [],
+      sections,
+      links: normalizeLinkSections(linksByListId.get(id) ?? [], sections),
     } as ListWithLinks;
   });
 }

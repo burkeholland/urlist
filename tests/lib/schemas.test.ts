@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { CreateListSchema, MAX_LINKS, UpdateListSchema, sanitizeText } from '@/lib/schemas/shared';
+import { MAX_SECTION_NAME_LENGTH, MAX_SECTIONS } from '@/lib/sections';
 
 const link = (overrides = {}) => ({
   url: 'https://example.com',
@@ -69,6 +70,26 @@ describe('CreateListSchema', () => {
     expect(() => CreateListSchema.parse({ links: [link({ position: 1.5 })] })).toThrow();
     expect(() => CreateListSchema.parse({ links: [link({ position: -1 })] })).toThrow();
   });
+
+  it('accepts sections and section IDs on links', () => {
+    const result = CreateListSchema.parse({
+      sections: [{ id: 'section_1', name: 'Resources', position: 0 }],
+      links: [link({ sectionId: 'section_1' })],
+    });
+    expect(result.sections?.[0].name).toBe('Resources');
+    expect(result.links[0].sectionId).toBe('section_1');
+  });
+
+  it('enforces section count, name, id, and position limits', () => {
+    expect(() => CreateListSchema.parse({
+      sections: Array.from({ length: MAX_SECTIONS + 1 }, (_, i) => ({ id: `s${i}`, name: 'S', position: i })),
+      links: [link()],
+    })).toThrow();
+    expect(() => CreateListSchema.parse({ sections: [{ id: 'bad id', name: 'S', position: 0 }], links: [link()] })).toThrow();
+    expect(() => CreateListSchema.parse({ sections: [{ id: 's', name: '', position: 0 }], links: [link()] })).toThrow();
+    expect(() => CreateListSchema.parse({ sections: [{ id: 's', name: 'x'.repeat(MAX_SECTION_NAME_LENGTH + 1), position: 0 }], links: [link()] })).toThrow();
+    expect(() => CreateListSchema.parse({ sections: [{ id: 's', name: 'S', position: -1 }], links: [link()] })).toThrow();
+  });
 });
 
 describe('UpdateListSchema', () => {
@@ -84,5 +105,15 @@ describe('UpdateListSchema', () => {
   it('allows update links to include an optional id field', () => {
     const result = UpdateListSchema.parse({ updatedAt: 1, links: [link({ id: 'link-1' })] });
     expect(result.links?.[0].id).toBe('link-1');
+  });
+
+  it('accepts sections during updates', () => {
+    const result = UpdateListSchema.parse({
+      updatedAt: 1,
+      sections: [{ id: 'a', name: 'A', position: 0 }],
+      links: [link({ id: 'link-1', sectionId: 'a' })],
+    });
+    expect(result.sections?.[0].id).toBe('a');
+    expect(result.links?.[0].sectionId).toBe('a');
   });
 });

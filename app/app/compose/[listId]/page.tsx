@@ -4,10 +4,11 @@ import { useEffect, useState, useCallback, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { NavHeader } from '@/components/nav-header';
 import { UrlInput } from '@/components/url-input';
-import { SortableLinkList } from '@/components/sortable-link-list';
+import { SectionedLinkList } from '@/components/sectioned-link-list';
 import { useDraft } from '@/hooks/use-draft';
 import { useAuth } from '@/hooks/use-auth';
 import type { DraftLink, ListWithLinks } from '@/lib/types';
+import { MAX_SECTION_NAME_LENGTH, MAX_SECTIONS, reindexLinksBySection, sortSections } from '@/lib/sections';
 import { nanoid } from 'nanoid';
 
 interface EditPageProps {
@@ -18,12 +19,33 @@ export default function EditComposePage({ params }: EditPageProps) {
   const { listId } = use(params);
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
-  const { description, setDescription, links, setLinks, loaded, addLink, updateLink, removeLink, reorderLinks, pinLink, clearDraft } = useDraft(listId);
+  const {
+    description,
+    setDescription,
+    sections,
+    setSections,
+    links,
+    setLinks,
+    loaded,
+    addLink,
+    updateLink,
+    removeLink,
+    moveLinkToSection,
+    pinLink,
+    clearDraft,
+  } = useDraft(listId);
 
   const [listData, setListData] = useState<ListWithLinks | null>(null);
   const [fetching, setFetching] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [targetSectionId, setTargetSectionId] = useState(sections[0].id);
+  const orderedSections = sortSections(sections);
+  const sectionValidationError = sections.length > MAX_SECTIONS
+    ? `Lists can have up to ${MAX_SECTIONS} sections.`
+    : sections.some((section) => section.name.trim().length === 0)
+      ? 'Every section needs a heading.'
+      : null;
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -47,10 +69,12 @@ export default function EditComposePage({ params }: EditPageProps) {
         // Only populate draft if draft is empty (not previously saved)
         if (loaded && links.length === 0) {
           setDescription(data.description);
+          setSections(data.sections);
           setLinks(
             data.links.map((l) => ({
               id: l.id,
               url: l.url,
+              sectionId: l.sectionId ?? data.sections[0].id,
               position: l.position,
               pinned: l.pinned ?? false,
               ogTitle: l.ogTitle,
@@ -70,7 +94,13 @@ export default function EditComposePage({ params }: EditPageProps) {
     if (loaded) {
       void fetchList();
     }
-  }, [listId, loaded, links.length, setDescription, setLinks]);
+  }, [listId, loaded, links.length, setDescription, setSections, setLinks]);
+
+  useEffect(() => {
+    if (!sections.some((section) => section.id === targetSectionId)) {
+      setTargetSectionId(sections[0].id);
+    }
+  }, [sections, targetSectionId]);
 
   const handleAddUrl = useCallback(
     (url: string) => {
@@ -78,6 +108,7 @@ export default function EditComposePage({ params }: EditPageProps) {
       const newLink: DraftLink = {
         id: linkId,
         url,
+        sectionId: targetSectionId,
         position: links.length,
         pinned: false,
         ogTitle: null,
@@ -111,8 +142,40 @@ export default function EditComposePage({ params }: EditPageProps) {
           updateLink(linkId, { ogLoading: false });
         });
     },
-    [links.length, addLink, updateLink]
+    [links.length, targetSectionId, addLink, updateLink]
   );
+
+  const handleAddSection = useCallback(() => {
+    if (sections.length >= MAX_SECTIONS) {
+      setError(`Lists can have up to ${MAX_SECTIONS} sections.`);
+      return;
+    }
+    const section = {
+      id: `section-${nanoid(8)}`,
+      name: `Section ${sections.length + 1}`,
+      position: sections.length,
+    };
+    setSections((prev) => [...prev, section]);
+    setTargetSectionId(section.id);
+  }, [sections.length, setSections]);
+
+  const handleRenameSection = useCallback((sectionId: string, name: string) => {
+    setSections((prev) => prev.map((section) => (
+      section.id === sectionId ? { ...section, name: name.slice(0, MAX_SECTION_NAME_LENGTH) } : section
+    )));
+  }, [setSections]);
+
+  const handleDeleteSection = useCallback((sectionId: string) => {
+    if (sections.length <= 1) return;
+    const remainingSections = sortSections(sections.filter((section) => section.id !== sectionId))
+      .map((section, position) => ({ ...section, position }));
+    const fallbackSectionId = remainingSections[0].id;
+    setSections(remainingSections);
+    setLinks((prev) => reindexLinksBySection(prev.map((link) => (
+      link.sectionId === sectionId ? { ...link, sectionId: fallbackSectionId } : link
+    )), remainingSections));
+    setTargetSectionId((current) => (current === sectionId ? fallbackSectionId : current));
+  }, [sections, setSections, setLinks]);
 
   const handleSave = async () => {
     if (!listData) return;
@@ -134,16 +197,18 @@ export default function EditComposePage({ params }: EditPageProps) {
         body: JSON.stringify({
           description,
           updatedAt: listData.updatedAt,
-          links: links.map((l, i) => ({
+          links: links.map((l) => ({
             id: l.id,
             url: l.url,
-            position: i,
+            sectionId: l.sectionId,
+            position: l.position,
             pinned: l.pinned,
             ogTitle: l.ogTitle,
             ogDescription: l.ogDescription,
             ogImage: l.ogImage,
             ogSiteName: l.ogSiteName,
           })),
+          sections: orderedSections.map((section, position) => ({ ...section, name: section.name.trim(), position })),
         }),
       });
 
@@ -275,23 +340,47 @@ export default function EditComposePage({ params }: EditPageProps) {
           <UrlInput onSubmit={handleAddUrl} placeholder="Paste a URL..." size="large" />
         </div>
 
-        <section className="field-group">
-          <div className="section-head">
-            <h2>
-              Links <span className="count-badge">{links.length}</span>
-            </h2>
+        {orderedSections.length > 1 ? (
+          <label className="target-section">
+            <span className="label">New links go to</span>
+            <select className="input" value={targetSectionId} onChange={(e) => setTargetSectionId(e.target.value)}>
+              {orderedSections.map((section) => (
+                <option key={section.id} value={section.id}>{section.name}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
+        {sectionValidationError && (
+          <div style={{ color: 'var(--danger)', fontSize: '15px', marginBottom: 12 }}>
+            {sectionValidationError}
           </div>
+        )}
+
+        <section className="field-group">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <SortableLinkList links={links} onReorder={reorderLinks} onDelete={removeLink} onUpdate={updateLink} onPin={pinLink} />
+            <SectionedLinkList
+              sections={orderedSections}
+              links={links}
+              onAddSection={handleAddSection}
+              onRenameSection={handleRenameSection}
+              onDeleteSection={handleDeleteSection}
+              onReorderSections={setSections}
+              onLinksChange={setLinks}
+              onDeleteLink={removeLink}
+              onUpdateLink={updateLink}
+              onPinLink={pinLink}
+              onMoveLinkToSection={moveLinkToSection}
+            />
           </div>
         </section>
 
         <div className="compose-actions">
           <button
             onClick={handleSave}
-            disabled={links.length === 0 || saving}
+            disabled={links.length === 0 || saving || !!sectionValidationError}
             className="btn btn-primary"
-            style={links.length === 0 || saving ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+            style={links.length === 0 || saving || !!sectionValidationError ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
           >
             {saving ? 'Saving…' : 'Save'}
           </button>
@@ -335,6 +424,11 @@ export default function EditComposePage({ params }: EditPageProps) {
             display: flex;
             gap: 8px;
             align-items: center;
+          }
+          .target-section {
+            display: block;
+            max-width: 280px;
+            margin: -4px 0 14px;
           }
         `}</style>
       </main>
