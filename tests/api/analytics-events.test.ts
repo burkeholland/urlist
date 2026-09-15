@@ -96,12 +96,13 @@ describe('POST /api/lists/[listId]/analytics/events', () => {
   });
 
   it('returns 204 and records pageView', async () => {
-    const req = createRequest({ type: 'pageView', referrer: 'https://google.com', utmSource: 's', utmMedium: 'm', utmCampaign: 'c' });
+    const req = createRequest({ type: 'pageView', surface: 'embed', referrer: 'https://google.com', utmSource: 's', utmMedium: 'm', utmCampaign: 'c' });
     const res = await POST(req, params);
     expect(res.status).toBe(204);
     expect(mockRecordPageView).toHaveBeenCalledWith(expect.objectContaining({
       slug: 'my-list',
       visitorId: 'abc123hash',
+      surface: 'embed',
       referrer: 'https://google.com',
       utmSource: 's',
       utmMedium: 'm',
@@ -114,6 +115,7 @@ describe('POST /api/lists/[listId]/analytics/events', () => {
     const res = await POST(req, params);
     expect(res.status).toBe(204);
     expect(mockRecordPageView).toHaveBeenCalledWith(expect.objectContaining({
+      surface: 'page',
       referrer: null,
       utmSource: null,
       utmMedium: null,
@@ -140,13 +142,14 @@ describe('POST /api/lists/[listId]/analytics/events', () => {
   });
 
   it('returns 204 and records linkClick', async () => {
-    const req = createRequest({ type: 'linkClick', linkId: 'link1', referrer: null });
+    const req = createRequest({ type: 'linkClick', linkId: 'link1', surface: 'embed', referrer: null });
     const res = await POST(req, params);
     expect(res.status).toBe(204);
     expect(mockRecordLinkClick).toHaveBeenCalledWith(expect.objectContaining({
       slug: 'my-list',
       linkId: 'link1',
       visitorId: 'abc123hash',
+      surface: 'embed',
     }));
   });
 

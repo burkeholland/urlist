@@ -17,6 +17,7 @@ import type {
 export async function recordPageView(params: {
   slug: string;
   visitorId: string;
+  surface: 'page' | 'embed';
   referrer: string | null;
   utmSource: string | null;
   utmMedium: string | null;
@@ -28,6 +29,7 @@ export async function recordPageView(params: {
     id: `pv_${nanoid(12)}`,
     slug: params.slug,
     type: 'pageView',
+    surface: params.surface,
     visitorId: params.visitorId,
     referrer: params.referrer,
     utmSource: params.utmSource,
@@ -42,6 +44,7 @@ export async function recordLinkClick(params: {
   slug: string;
   linkId: string;
   visitorId: string;
+  surface: 'page' | 'embed';
   referrer: string | null;
 }): Promise<void> {
   const db = getDb();
@@ -49,6 +52,7 @@ export async function recordLinkClick(params: {
     id: `lc_${nanoid(12)}`,
     slug: params.slug,
     type: 'linkClick',
+    surface: params.surface,
     linkId: params.linkId,
     visitorId: params.visitorId,
     referrer: params.referrer,
@@ -112,6 +116,12 @@ export async function getListAnalytics(
   const uniqueVisitors = uniqueVisitorIds.size;
   const totalClicks = linkClicks.length;
   const clickThroughRate = totalViews > 0 ? totalClicks / totalViews : 0;
+  const surfaceBreakdown = {
+    pageViews: pageViews.filter((event) => (event.surface ?? 'page') === 'page').length,
+    embedViews: pageViews.filter((event) => (event.surface ?? 'page') === 'embed').length,
+    pageClicks: linkClicks.filter((event) => (event.surface ?? 'page') === 'page').length,
+    embedClicks: linkClicks.filter((event) => (event.surface ?? 'page') === 'embed').length,
+  };
 
   // Views over time (daily buckets)
   const dailyMap = new Map<string, { views: number; visitors: Set<string> }>();
@@ -173,6 +183,7 @@ export async function getListAnalytics(
     uniqueVisitors,
     totalClicks,
     clickThroughRate,
+    surfaceBreakdown,
     viewsOverTime,
     topReferrers,
     geoBreakdown,
@@ -185,7 +196,7 @@ export async function getListAnalyticsSummary(slug: string): Promise<ListAnalyti
 
   const { resources: pageViewCounts } = await db
     .container('analytics')
-    .items.query<{ $1: number }>({
+    .items.query<number>({
       query: "SELECT VALUE COUNT(1) FROM c WHERE c.slug = @slug AND c.type = 'pageView'",
       parameters: [{ name: '@slug', value: slug }],
     })
@@ -193,7 +204,7 @@ export async function getListAnalyticsSummary(slug: string): Promise<ListAnalyti
 
   const { resources: linkClickCounts } = await db
     .container('analytics')
-    .items.query<{ $1: number }>({
+    .items.query<number>({
       query: "SELECT VALUE COUNT(1) FROM c WHERE c.slug = @slug AND c.type = 'linkClick'",
       parameters: [{ name: '@slug', value: slug }],
     })

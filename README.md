@@ -7,7 +7,7 @@ A link-list sharing app. Create curated collections of URLs, give them a custom 
 - **Create & organize link lists** — add URLs, drag-and-drop to reorder, and auto-fetch Open Graph metadata (titles, descriptions, images)
 - **Pin a link** — pin one link to the top of a list to highlight it; pinned links are visually marked in the public view
 - **Custom slugs** — publish your list at a memorable URL like `/my-awesome-links`
-- **Public link sharing** — published URL cards include one-click copy buttons for individual links
+- **Public link sharing & embeds** — published lists support accessible copy/share controls, QR mode, and a read-only iframe embed
 - **GitHub authentication** — sign in with GitHub to save and manage your lists
 - **Dark mode** — automatic theme detection with manual toggle
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useContext, createContext, useCallback, type ReactNode } from 'react';
+import { shouldBootstrapAuth } from '@/lib/embed';
 
 export interface SessionUser {
   uid: string;
@@ -23,6 +24,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!shouldBootstrapAuth(window.location.search)) {
+      const frame = window.requestAnimationFrame(() => setLoading(false));
+      return () => window.cancelAnimationFrame(frame);
+    }
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
 
