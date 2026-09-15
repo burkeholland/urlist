@@ -27,6 +27,9 @@ interface SortableLinkListProps {
   onDelete: (id: string) => void;
   onUpdate?: (id: string, updates: Partial<DraftLink>) => void;
   onPin?: (id: string) => void;
+  sortable?: boolean;
+  emptyMessage?: string;
+  reorderingDisabledMessage?: string;
 }
 
 function SortableItem({ link, onDelete, onUpdate, onPin }: { link: DraftLink; onDelete: (id: string) => void; onUpdate?: (id: string, updates: Partial<DraftLink>) => void; onPin?: (id: string) => void }) {
@@ -68,7 +71,16 @@ function SortableItem({ link, onDelete, onUpdate, onPin }: { link: DraftLink; on
   );
 }
 
-export function SortableLinkList({ links, onReorder, onDelete, onUpdate, onPin }: SortableLinkListProps) {
+export function SortableLinkList({
+  links,
+  onReorder,
+  onDelete,
+  onUpdate,
+  onPin,
+  sortable = true,
+  emptyMessage = 'No links added yet. Paste a URL above to get started.',
+  reorderingDisabledMessage,
+}: SortableLinkListProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -96,7 +108,33 @@ export function SortableLinkList({ links, onReorder, onDelete, onUpdate, onPin }
           color: 'var(--text-muted)',
         }}
       >
-        No links added yet. Paste a URL above to get started.
+        {emptyMessage}
+      </div>
+    );
+  }
+
+  if (!sortable) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {reorderingDisabledMessage && (
+          <div
+            style={{
+              padding: '10px 12px',
+              borderRadius: 'var(--radius)',
+              border: '1px solid var(--border)',
+              background: 'var(--bg-secondary)',
+              color: 'var(--text-muted)',
+              fontSize: 13,
+            }}
+          >
+            {reorderingDisabledMessage}
+          </div>
+        )}
+        {links.map((link) => (
+          <div key={link.id}>
+            <LinkCard link={link} onDelete={onDelete} onUpdate={onUpdate} onPin={onPin} />
+          </div>
+        ))}
       </div>
     );
   }

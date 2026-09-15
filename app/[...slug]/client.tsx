@@ -1,9 +1,19 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useDeferredValue, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { LinkCard } from '@/components/link-card';
 import { NavHeader } from '@/components/nav-header';
+import { LinkFilterBar } from '@/components/link-filter-bar';
+import {
+  clearLinkFilters,
+  defaultLinkFilters,
+  filterIndexedLinks,
+  getLinkDomainOptions,
+  getLinkEmptyStateMessage,
+  hasActiveLinkFilters,
+  indexLinks,
+} from '@/lib/link-filters';
 import type { ListWithLinks, TrackEventPayload } from '@/lib/types';
 
 const QRCodeSVG = dynamic(
@@ -31,12 +41,24 @@ function trackEvent(listId: string, payload: TrackEventPayload) {
 export function PublicListClient({ list, slug, justPublished }: PublicListClientProps) {
   const [showBanner, setShowBanner] = useState(justPublished);
   const [view, setView] = useState<'list' | 'qr'>('list');
+  const [filters, setFilters] = useState(defaultLinkFilters());
   // null until mounted — avoids encoding a relative URL into the QR code
   const [publicUrl, setPublicUrl] = useState<string | null>(null);
+  const deferredQuery = useDeferredValue(filters.query);
 
   useEffect(() => {
     setPublicUrl(`${window.location.origin}/${slug}`);
   }, [slug]);
+
+  const indexedLinks = useMemo(() => indexLinks(list.links), [list.links]);
+  const domainOptions = useMemo(() => getLinkDomainOptions(indexedLinks), [indexedLinks]);
+  const visibleLinks = useMemo(
+    () => filterIndexedLinks(indexedLinks, { ...filters, query: deferredQuery }),
+    [indexedLinks, filters, deferredQuery],
+  );
+  const visibleCount = visibleLinks.length;
+  const totalCount = list.links.length;
+  const emptyMessage = getLinkEmptyStateMessage(visibleCount, totalCount, filters);
 
   // Store in recent publishes localStorage — only once publicUrl is a full absolute URL
   useEffect(() => {
@@ -102,7 +124,7 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
             <div className="pub-title">/{slug}</div>
             {list.description && <div className="pub-desc">{list.description}</div>}
             <div className="pub-meta">
-              {list.links.length} link{list.links.length !== 1 ? 's' : ''}
+              {visibleCount} of {totalCount} link{totalCount !== 1 ? 's' : ''}
             </div>
           </div>
 
@@ -143,13 +165,35 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
         <hr className="divider" />
 
         {view === 'list' ? (
-          <div className="pub-links" role="tabpanel" aria-label="Link list">
-            {[...list.links].sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false)).map((link) => (
-              <div key={link.id} onClick={() => handleLinkClick(link.id)}>
-                <LinkCard link={link} isPublicView />
+          <>
+            <LinkFilterBar
+              label="Filter public links"
+              filters={filters}
+              onChange={setFilters}
+              onClear={() => setFilters(clearLinkFilters())}
+              visibleCount={visibleCount}
+              totalCount={totalCount}
+              domainOptions={domainOptions}
+            />
+            {emptyMessage ? (
+              <div className="pub-empty-state" role="status" aria-live="polite" aria-atomic="true">
+                <p>{emptyMessage}</p>
+                {hasActiveLinkFilters(filters) && (
+                  <button type="button" className="btn" onClick={() => setFilters(clearLinkFilters())}>
+                    Clear all filters
+                  </button>
+                )}
               </div>
-            ))}
-          </div>
+            ) : (
+              <div className="pub-links" role="tabpanel" aria-label="Link list">
+                {visibleLinks.map(({ link }) => (
+                  <div key={link.id} onClick={() => handleLinkClick(link.id)}>
+                    <LinkCard link={link} isPublicView />
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         ) : (
           <div className="qr-view">
             {publicUrl ? (
@@ -285,6 +329,22 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
           display: flex;
           flex-direction: column;
           gap: 6px;
+        }
+
+        .pub-empty-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 12px;
+          padding: 36px 16px 8px;
+          color: var(--text-muted);
+          text-align: center;
+        }
+
+        .pub-empty-state p {
+          margin: 0;
+          font-family: var(--font-mono);
+          font-size: 14px;
         }
 
         .qr-view {

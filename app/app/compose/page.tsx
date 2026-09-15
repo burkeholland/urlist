@@ -1,17 +1,27 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo, Suspense } from 'react';
+import { useEffect, useState, useCallback, useMemo, Suspense, useDeferredValue } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { NavHeader } from '@/components/nav-header';
 import { SlugInput } from '@/components/slug-input';
 import { UrlInput } from '@/components/url-input';
 import { SortableLinkList } from '@/components/sortable-link-list';
+import { LinkFilterBar } from '@/components/link-filter-bar';
 import { PublishButton } from '@/components/publish-button';
 import { useDraft } from '@/hooks/use-draft';
 import { useDebounce } from '@/hooks/use-debounce';
 import { validateSlugFormat } from '@/lib/slug';
 import type { DraftLink, SlugValidationStatus } from '@/lib/types';
 import { nanoid } from 'nanoid';
+import {
+  clearLinkFilters,
+  defaultLinkFilters,
+  filterIndexedLinks,
+  getLinkDomainOptions,
+  getLinkEmptyStateMessage,
+  hasActiveLinkFilters,
+  indexLinks,
+} from '@/lib/link-filters';
 
 function ComposeContent() {
   const router = useRouter();
@@ -36,7 +46,9 @@ function ComposeContent() {
   const [error, setError] = useState<string | null>(null);
   const [slugApiResult, setSlugApiResult] = useState<{ available: boolean; slug: string } | null>(null);
   const [initialUrlProcessed, setInitialUrlProcessed] = useState(false);
+  const [filters, setFilters] = useState(defaultLinkFilters());
   const debouncedSlug = useDebounce(slug, 400);
+  const deferredQuery = useDeferredValue(filters.query);
 
   // Derive slug status from state
   const slugStatus: SlugValidationStatus = useMemo(() => {
@@ -167,6 +179,19 @@ function ComposeContent() {
     slugStatus === 'taken' ||
     slugStatus === 'checking';
 
+  const indexedLinks = useMemo(() => indexLinks(links), [links]);
+  const domainOptions = useMemo(() => getLinkDomainOptions(indexedLinks), [indexedLinks]);
+  const visibleLinks = useMemo(
+    () => filterIndexedLinks(indexedLinks, { ...filters, query: deferredQuery }),
+    [indexedLinks, filters, deferredQuery],
+  );
+  const visibleCount = visibleLinks.length;
+  const totalCount = links.length;
+  const emptyMessage = getLinkEmptyStateMessage(visibleCount, totalCount, filters);
+  const reorderingDisabledMessage = hasActiveLinkFilters(filters)
+    ? 'Filtering only changes what is shown. Clear all filters to reorder links.'
+    : undefined;
+
   if (!loaded) {
     return (
       <div style={{ minHeight: '100vh' }}>
@@ -258,8 +283,27 @@ function ComposeContent() {
             </h2>
           </div>
 
+          <LinkFilterBar
+            label="Filter draft links"
+            filters={filters}
+            onChange={setFilters}
+            onClear={() => setFilters(clearLinkFilters())}
+            visibleCount={visibleCount}
+            totalCount={totalCount}
+            domainOptions={domainOptions}
+          />
+
           <div className="pub-links">
-            <SortableLinkList links={links} onReorder={reorderLinks} onDelete={removeLink} onUpdate={updateLink} onPin={pinLink} />
+            <SortableLinkList
+              links={visibleLinks.map(({ link }) => link)}
+              onReorder={reorderLinks}
+              onDelete={removeLink}
+              onUpdate={updateLink}
+              onPin={pinLink}
+              sortable={!hasActiveLinkFilters(filters)}
+              emptyMessage={emptyMessage || 'No links added yet. Paste a URL above to get started.'}
+              reorderingDisabledMessage={reorderingDisabledMessage}
+            />
           </div>
 
           <div className="compose-actions">
