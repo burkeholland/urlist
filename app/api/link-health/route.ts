@@ -22,7 +22,7 @@ function isDue(link: LinkWithId, now: number): boolean {
     link.healthNextCheckAt <= now;
 }
 
-function healthOnly(update: LinkHealthUpdate): LinkHealthUpdate {
+function healthOnly(update: LinkHealthUpdate): Partial<LinkHealthUpdate> {
   return {
     healthStatus: update.healthStatus,
     healthReason: update.healthReason,
@@ -31,8 +31,6 @@ function healthOnly(update: LinkHealthUpdate): LinkHealthUpdate {
     healthHttpStatus: update.healthHttpStatus,
     healthFailureCount: update.healthFailureCount,
     healthNextCheckAt: update.healthNextCheckAt,
-    metadataRefreshedAt: update.metadataRefreshedAt,
-    metadataRefreshStatus: update.metadataRefreshStatus,
   };
 }
 
@@ -105,14 +103,31 @@ export async function POST(request: NextRequest) {
     reason: string;
   }> = [];
   const checkedByUrl = new Map<string, LinkHealthUpdate>();
+  const rateLimitedDestinations = new Set<string>();
+  let skipped = 0;
 
   for (const candidate of candidates) {
     const key = candidate.link.url.trim().toLowerCase();
-    const update = checkedByUrl.get(key) ?? await checkLinkHealth(candidate.link, { now });
-    checkedByUrl.set(key, update);
-    const persistedUpdate = checkedByUrl.get(key) === update && results.some((r) => r.url === candidate.link.url)
-      ? healthOnly(update)
-      : update;
+    let update = checkedByUrl.get(key);
+    const duplicateDestination = update !== undefined;
+
+    if (!update) {
+      if (rateLimitedDestinations.has(key)) {
+        skipped++;
+        continue;
+      }
+
+      const destinationRateCheck = await checkRateLimit(key, RATE_LIMITS.linkHealthDestination);
+      if (!destinationRateCheck.allowed) {
+        rateLimitedDestinations.add(key);
+        skipped++;
+        continue;
+      }
+
+      update = await checkLinkHealth(candidate.link, { now });
+      checkedByUrl.set(key, update);
+    }
+    const persistedUpdate = duplicateDestination ? healthOnly(update) : update;
 
     await updateLinkHealth({
       listId: candidate.listId,
@@ -131,6 +146,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     data: {
       checked: results.length,
+      skipped,
       deduplicatedDestinations: checkedByUrl.size,
       attentionNeeded: results.filter((r) => ['redirected', 'transient', 'broken'].includes(r.status)).length,
       results,

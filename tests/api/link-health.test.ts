@@ -41,6 +41,7 @@ vi.mock('@/lib/rate-limiter', () => ({
   RATE_LIMITS: {
     linkHealthManual: { endpoint: 'link-health-manual', limit: 120, windowSeconds: 3600 },
     linkHealthJob: { endpoint: 'link-health-job', limit: 12, windowSeconds: 3600 },
+    linkHealthDestination: { endpoint: 'link-health-destination', limit: 1, windowSeconds: 60 },
   },
 }));
 vi.mock('@/lib/logger', () => ({ log: vi.fn() }));
@@ -162,6 +163,22 @@ describe('POST /api/lists/[listId]/links/[linkId]/health', () => {
     expect(res.status).toBe(429);
     expect(res.body.error.code).toBe('RATE_LIMIT_EXCEEDED');
   });
+
+  it('rate limits manual checks per destination', async () => {
+    vi.mocked(checkRateLimit)
+      .mockResolvedValueOnce({ allowed: true })
+      .mockResolvedValueOnce({ allowed: false, retryAfter: 60 });
+
+    const res = await json(await POSTLinkHealthAction(
+      req('https://urlist.test/api/lists/list-1/links/link-1/health'),
+      { params: Promise.resolve({ listId: 'list-1', linkId: 'link-1' }) },
+    ));
+
+    expect(res.status).toBe(429);
+    expect(res.body.error.code).toBe('DESTINATION_RATE_LIMITED');
+    expect(checkLinkHealth).not.toHaveBeenCalled();
+    expect(updateLinkHealth).not.toHaveBeenCalled();
+  });
 });
 
 describe('POST /api/link-health', () => {
@@ -203,9 +220,38 @@ describe('POST /api/link-health', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.checked).toBe(2);
+    expect(res.body.data.skipped).toBe(0);
     expect(res.body.data.deduplicatedDestinations).toBe(1);
     expect(checkLinkHealth).toHaveBeenCalledTimes(1);
     expect(updateLinkHealth).toHaveBeenCalledTimes(2);
+    expect(updateLinkHealth).toHaveBeenNthCalledWith(2, {
+      listId: 'list-1',
+      linkId: 'link-2',
+      updates: {
+        healthStatus: healthUpdate.healthStatus,
+        healthReason: healthUpdate.healthReason,
+        healthCheckedAt: healthUpdate.healthCheckedAt,
+        healthFinalUrl: healthUpdate.healthFinalUrl,
+        healthHttpStatus: healthUpdate.healthHttpStatus,
+        healthFailureCount: healthUpdate.healthFailureCount,
+        healthNextCheckAt: healthUpdate.healthNextCheckAt,
+        healthDismissedAt: null,
+      },
+    });
+  });
+
+  it('skips a bounded job destination when its destination cooldown is exhausted', async () => {
+    vi.mocked(checkRateLimit)
+      .mockResolvedValueOnce({ allowed: true })
+      .mockResolvedValueOnce({ allowed: false, retryAfter: 60 });
+
+    const res = await json(await POSTLinkHealthJob(req('https://urlist.test/api/link-health', { limit: 2 })));
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.checked).toBe(0);
+    expect(res.body.data.skipped).toBe(2);
+    expect(checkLinkHealth).not.toHaveBeenCalled();
+    expect(updateLinkHealth).not.toHaveBeenCalled();
   });
 
   it('requires ownership when a listId is provided', async () => {

@@ -93,6 +93,20 @@ export async function POST(
 
     const key = destinationKey(link.url);
     const now = Date.now();
+    const destinationRateCheck = await checkRateLimit(key, RATE_LIMITS.linkHealthDestination);
+    if (!destinationRateCheck.allowed) {
+      return NextResponse.json(
+        {
+          error: {
+            code: 'DESTINATION_RATE_LIMITED',
+            message: 'This destination was checked recently. Please try again shortly.',
+            retryAfter: destinationRateCheck.retryAfter,
+          },
+        },
+        { status: 429, headers: { 'Retry-After': String(destinationRateCheck.retryAfter) } },
+      );
+    }
+
     const lastChecked = destinationLastChecked.get(key);
     if (lastChecked && now - lastChecked < DESTINATION_COOLDOWN_MS) {
       const retryAfter = retryAfterSeconds(lastChecked, now);

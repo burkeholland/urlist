@@ -1,10 +1,23 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { EventEmitter } from 'node:events';
 import { checkLinkHealth } from '@/lib/link-health';
 import type { LinkWithId } from '@/lib/types';
 
 vi.mock('dns/promises', () => ({
   default: {
     lookup: vi.fn().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]),
+  },
+}));
+
+vi.mock('node:https', () => ({
+  default: {
+    request: vi.fn(),
+  },
+}));
+
+vi.mock('node:http', () => ({
+  default: {
+    request: vi.fn(),
   },
 }));
 
@@ -42,6 +55,39 @@ function response(status: number, body = '', headers: Record<string, string> = {
   return new Response(body, { status, headers });
 }
 
+async function mockHttpsResponse(status: number, body = '', headers: Record<string, string> = {}) {
+  const https = await import('node:https');
+  const request = https.default.request as unknown as Mock;
+  request.mockImplementation((options: unknown, callback: (res: EventEmitter & {
+    statusCode: number;
+    headers: Record<string, string>;
+  }) => void) => {
+    const req = new EventEmitter() as EventEmitter & {
+      setTimeout: Mock;
+      destroy: Mock;
+      end: Mock;
+    };
+    req.setTimeout = vi.fn();
+    req.destroy = vi.fn((error?: Error) => {
+      if (error) queueMicrotask(() => req.emit('error', error));
+      return req;
+    });
+    req.end = vi.fn(() => {
+      const res = new EventEmitter() as EventEmitter & {
+        statusCode: number;
+        headers: Record<string, string>;
+      };
+      res.statusCode = status;
+      res.headers = headers;
+      callback(res);
+      if (body) res.emit('data', Buffer.from(body));
+      res.emit('end');
+    });
+    return req;
+  });
+  return request;
+}
+
 describe('checkLinkHealth', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -70,6 +116,26 @@ describe('checkLinkHealth', () => {
     });
   });
 
+  it('pins production HTTPS requests to the DNS-validated public address', async () => {
+    const request = await mockHttpsResponse(200, html, { 'content-type': 'text/html' });
+
+    const result = await checkLinkHealth(link(), { now: 150 });
+
+    expect(result.healthStatus).toBe('healthy');
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hostname: '93.184.216.34',
+        port: 443,
+        path: '/start',
+        servername: 'example.com',
+        headers: expect.objectContaining({
+          Host: 'example.com',
+        }),
+      }),
+      expect.any(Function),
+    );
+  });
+
   it('follows redirect chains and stores the final URL without changing the destination', async () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(response(301, '', { location: '/middle' }))
@@ -82,6 +148,19 @@ describe('checkLinkHealth', () => {
     expect(result.healthReason).toBe('redirect');
     expect(result.healthFinalUrl).toBe('https://example.org/final');
     expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it('treats a 3xx response without a location as redirected attention', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response(302));
+
+    const result = await checkLinkHealth(link(), { fetchImpl, now: 250 });
+
+    expect(result).toMatchObject({
+      healthStatus: 'redirected',
+      healthReason: 'redirect',
+      healthFinalUrl: 'https://example.com/start',
+      healthHttpStatus: 302,
+    });
   });
 
   it('distinguishes permanent 404 and 410 outcomes', async () => {
@@ -170,6 +249,28 @@ describe('checkLinkHealth', () => {
     const confirmed = await checkLinkHealth(ownerEdited, {
       fetchImpl,
       now: 801,
+      confirmMetadataOverwrite: true,
+    });
+    expect(confirmed.ogTitle).toBe('Fresh Title');
+    expect(confirmed.ogDescription).toBe('Fresh Description');
+  });
+
+  it('does not refill owner-cleared title or description unless confirmed', async () => {
+    const fetchImpl = vi.fn().mockImplementation(() => Promise.resolve(response(200, html, { 'content-type': 'text/html' })));
+    const ownerCleared = link({
+      ogTitle: null,
+      ogDescription: null,
+      ogTitleUserEdited: true,
+      ogDescriptionUserEdited: true,
+    });
+
+    const safeRefresh = await checkLinkHealth(ownerCleared, { fetchImpl, now: 850 });
+    expect(safeRefresh.ogTitle).toBeUndefined();
+    expect(safeRefresh.ogDescription).toBeUndefined();
+
+    const confirmed = await checkLinkHealth(ownerCleared, {
+      fetchImpl,
+      now: 851,
       confirmMetadataOverwrite: true,
     });
     expect(confirmed.ogTitle).toBe('Fresh Title');

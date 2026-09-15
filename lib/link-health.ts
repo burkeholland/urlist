@@ -1,4 +1,6 @@
 import { setTimeout as delay } from 'timers/promises';
+import http from 'node:http';
+import https from 'node:https';
 import { log } from './logger';
 import { validateUrlNotPrivate } from './safe-url';
 import { isValidHttpUrl } from './url';
@@ -23,6 +25,10 @@ const RETRY_DELAYS_MS = [0, 100, 300] as const;
 const TRANSIENT_RECHECK_MS = 6 * 60 * 60 * 1000;
 const HEALTHY_RECHECK_MS = 7 * 24 * 60 * 60 * 1000;
 const BROKEN_RECHECK_MS = 24 * 60 * 60 * 1000;
+const FETCH_HEADERS = {
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'User-Agent': 'Urlist-LinkHealth/1.0',
+};
 
 type FetchLike = typeof fetch;
 
@@ -54,6 +60,110 @@ interface FetchAttemptResult {
   response: Response;
   finalUrl: string;
   redirected: boolean;
+}
+
+function responseHeaders(headers: http.IncomingHttpHeaders): Headers {
+  const result = new Headers();
+  for (const [key, value] of Object.entries(headers)) {
+    if (value === undefined) continue;
+    if (Array.isArray(value)) {
+      for (const item of value) result.append(key, item);
+    } else {
+      result.set(key, value);
+    }
+  }
+  return result;
+}
+
+function responseStatus(statusCode?: number): number {
+  return statusCode && statusCode >= 200 && statusCode <= 599 ? statusCode : 502;
+}
+
+function pinnedRequest(
+  url: string,
+  address: string,
+  timeoutMs: number,
+): Promise<Response> {
+  const parsed = new URL(url);
+  const isHttps = parsed.protocol === 'https:';
+  const request = isHttps ? https.request : http.request;
+  const port = parsed.port ? Number(parsed.port) : isHttps ? 443 : 80;
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (response: Response) => {
+      if (settled) return;
+      settled = true;
+      resolve(response);
+    };
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    const req = request(
+      {
+        hostname: address,
+        port,
+        path: `${parsed.pathname}${parsed.search}`,
+        method: 'GET',
+        headers: {
+          ...FETCH_HEADERS,
+          Host: parsed.host,
+        },
+        servername: isHttps ? parsed.hostname : undefined,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        let received = 0;
+        res.on('data', (chunk: Buffer) => {
+          if (settled) return;
+          const remaining = MAX_HTML_BYTES - received;
+          if (remaining > 0) {
+            chunks.push(chunk.length > remaining ? chunk.subarray(0, remaining) : chunk);
+          }
+          received += chunk.length;
+          if (received >= MAX_HTML_BYTES) {
+            finish(new Response(Buffer.concat(chunks), {
+              status: responseStatus(res.statusCode),
+              headers: responseHeaders(res.headers),
+            }));
+            req.destroy();
+          }
+        });
+        res.on('end', () => {
+          finish(new Response(Buffer.concat(chunks), {
+            status: responseStatus(res.statusCode),
+            headers: responseHeaders(res.headers),
+          }));
+        });
+        res.on('error', fail);
+      },
+    );
+
+    req.setTimeout(timeoutMs, () => {
+      req.destroy(Object.assign(new Error('Request timed out.'), { name: 'AbortError' }));
+    });
+    req.on('error', fail);
+    req.end();
+  });
+}
+
+async function pinnedFetch(
+  url: string,
+  addresses: string[],
+  timeoutMs: number,
+): Promise<Response> {
+  let lastError: unknown;
+  for (const address of addresses) {
+    try {
+      return await pinnedRequest(url, address, timeoutMs);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError ?? new Error('URL hostname could not be safely resolved.');
 }
 
 function isTransientStatus(status: number): boolean {
@@ -111,7 +221,7 @@ function parseMetadata(url: string, html: string): OgMetadata {
 
 async function safeFetchWithRedirects(
   url: string,
-  fetchImpl: FetchLike,
+  fetchImpl: FetchLike | undefined,
   timeoutMs: number,
 ): Promise<FetchAttemptResult> {
   let currentUrl = url;
@@ -127,26 +237,27 @@ async function safeFetchWithRedirects(
       throw error;
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     let response: Response;
-    try {
-      response = await fetchImpl(currentUrl, {
-        method: 'GET',
-        redirect: 'manual',
-        signal: controller.signal,
-        headers: {
-          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'User-Agent': 'Urlist-LinkHealth/1.0',
-        },
-      });
-    } finally {
-      clearTimeout(timeout);
+    if (fetchImpl) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        response = await fetchImpl(currentUrl, {
+          method: 'GET',
+          redirect: 'manual',
+          signal: controller.signal,
+          headers: FETCH_HEADERS,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+    } else {
+      response = await pinnedFetch(currentUrl, safety.addresses ?? [], timeoutMs);
     }
 
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get('location');
-      if (!location) return { response, finalUrl: currentUrl, redirected };
+      if (!location) return { response, finalUrl: currentUrl, redirected: true };
       currentUrl = new URL(location, currentUrl).href;
       if (!isValidHttpUrl(currentUrl)) {
         const error = new Error('Redirect target is not an http(s) URL.') as Error & {
@@ -192,7 +303,7 @@ function mergeMetadata(
     protectedByOwnerEdit: boolean,
   ) => {
     if (next === null) return;
-    if ((confirmOverwrite || !protectedByOwnerEdit || current === null) && current !== next) {
+    if ((confirmOverwrite || !protectedByOwnerEdit) && current !== next) {
       updates[key] = next;
     }
   };
@@ -214,7 +325,7 @@ export async function checkLinkHealth(
   link: LinkWithId,
   options: LinkHealthCheckOptions = {},
 ): Promise<LinkHealthUpdate> {
-  const fetchImpl = options.fetchImpl ?? fetch;
+  const fetchImpl = options.fetchImpl;
   const now = options.now ?? Date.now();
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const refreshMetadata = options.refreshMetadata ?? true;
