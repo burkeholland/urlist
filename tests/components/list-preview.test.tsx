@@ -53,4 +53,29 @@ describe('ListPreview', () => {
     expect(markup).toContain('A carefully curated reading list.');
     expect(markup).toContain('Great article');
   });
+
+  it('does not crash when persisted draft URLs are invalid', () => {
+    const markup = renderToStaticMarkup(
+      <ListPreview
+        slug="draft-list"
+        description=""
+        branding={DEFAULT_DRAFT_BRANDING}
+        links={[
+          {
+            id: 'link-1',
+            url: 'not a valid url',
+            position: 0,
+            pinned: false,
+            ogTitle: 'Draft link',
+            ogDescription: null,
+            ogImage: null,
+            ogSiteName: null,
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain('Draft link');
+    expect(markup).toContain('not a valid url');
+  });
 });

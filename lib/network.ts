@@ -1,6 +1,10 @@
 import dns from 'dns/promises';
 import net from 'net';
 
+const ALLOWED_PROTOCOLS = new Set(['http:', 'https:']);
+const REDIRECT_STATUS_CODES = new Set([301, 302, 303, 307, 308]);
+const MAX_REDIRECTS = 5;
+
 const PRIVATE_IPV4_RANGES = [
   /^10\./,
   /^172\.(1[6-9]|2\d|3[01])\./,
@@ -66,4 +70,61 @@ export async function validateUrlNotPrivate(
   }
 
   return { safe: true };
+}
+
+function resolveRedirectLocation(
+  currentUrl: string,
+  location: string | null,
+): string | null {
+  if (!location) return null;
+
+  try {
+    const nextUrl = new URL(location, currentUrl);
+    if (!ALLOWED_PROTOCOLS.has(nextUrl.protocol)) {
+      return null;
+    }
+    return nextUrl.toString();
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchWithSafeRedirects(
+  urlString: string,
+  init?: RequestInit,
+): Promise<{ response: Response; url: string }> {
+  let currentUrl = urlString;
+
+  for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
+    const safety = await validateUrlNotPrivate(currentUrl);
+    if (!safety.safe) {
+      throw new Error(safety.error || 'URL resolves to a private/internal IP range.');
+    }
+
+    const response = await fetch(currentUrl, {
+      ...init,
+      redirect: 'manual',
+    });
+
+    if (!REDIRECT_STATUS_CODES.has(response.status)) {
+      return { response, url: currentUrl };
+    }
+
+    if (redirectCount === MAX_REDIRECTS) {
+      throw new Error('Too many redirects while fetching remote URL.');
+    }
+
+    const nextUrl = resolveRedirectLocation(
+      currentUrl,
+      response.headers.get('location'),
+    );
+
+    if (!nextUrl) {
+      throw new Error('Redirect target is invalid.');
+    }
+
+    currentUrl = nextUrl;
+  }
+
+  throw new Error('Too many redirects while fetching remote URL.');
 }

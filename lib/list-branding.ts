@@ -138,7 +138,7 @@ export function getResolvedSocialImageUrl(
   return (
     branding.socialImage?.url ||
     branding.coverImage?.url ||
-    `${origin}/${slug}/opengraph-image`
+    `${origin}/api/og-image/${slug}`
   );
 }
 
@@ -168,7 +168,21 @@ function getRelativeLuminance(hex: string): number {
 }
 
 export function getContrastTextColor(hex: string): '#111827' | '#ffffff' {
-  return getRelativeLuminance(hex) > 0.45 ? '#111827' : '#ffffff';
+  const darkText = '#111827' as const;
+  const lightText = '#ffffff' as const;
+  const backgroundLuminance = getRelativeLuminance(hex);
+  const darkContrast = (
+    Math.max(backgroundLuminance, getRelativeLuminance(darkText)) + 0.05
+  ) / (
+    Math.min(backgroundLuminance, getRelativeLuminance(darkText)) + 0.05
+  );
+  const lightContrast = (
+    Math.max(backgroundLuminance, getRelativeLuminance(lightText)) + 0.05
+  ) / (
+    Math.min(backgroundLuminance, getRelativeLuminance(lightText)) + 0.05
+  );
+
+  return darkContrast >= lightContrast ? darkText : lightText;
 }
 
 const THEME_TOKENS: Record<ListThemePreset, {

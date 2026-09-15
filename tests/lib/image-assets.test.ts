@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { inspectRemoteImage } from '@/lib/image-assets';
-import { validateUrlNotPrivate } from '@/lib/network';
+import { fetchWithSafeRedirects } from '@/lib/network';
 
 vi.mock('@/lib/network', () => ({
-  validateUrlNotPrivate: vi.fn(),
+  fetchWithSafeRedirects: vi.fn(),
 }));
 
 vi.mock('@/lib/logger', () => ({
@@ -30,26 +30,34 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 describe('inspectRemoteImage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(validateUrlNotPrivate).mockResolvedValue({ safe: true });
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === 'HEAD') {
-        return new Response(null, {
-          status: 200,
-          headers: {
-            'content-length': '4096',
-            'content-type': 'image/png',
-          },
-        });
-      }
-      return new Response(toArrayBuffer(makePng(1200, 630)), {
-        status: 206,
-        headers: {
-          'content-length': '4096',
-          'content-type': 'image/png',
-          'content-range': 'bytes 0-4095/4096',
-        },
-      });
-    }));
+    vi.mocked(fetchWithSafeRedirects).mockImplementation(
+      async (_url: string, init?: RequestInit) => {
+        if (init?.method === 'HEAD') {
+          return {
+            url: 'https://cdn.example.com/preview.png',
+            response: new Response(null, {
+              status: 200,
+              headers: {
+                'content-length': '4096',
+                'content-type': 'image/png',
+              },
+            }),
+          };
+        }
+
+        return {
+          url: 'https://cdn.example.com/preview.png',
+          response: new Response(toArrayBuffer(makePng(1200, 630)), {
+            status: 206,
+            headers: {
+              'content-length': '4096',
+              'content-type': 'image/png',
+              'content-range': 'bytes 0-4095/4096',
+            },
+          }),
+        };
+      },
+    );
   });
 
   it('returns a normalized asset for a valid image', async () => {
@@ -65,29 +73,37 @@ describe('inspectRemoteImage', () => {
     });
   });
 
-  it('rejects private or unresolved image URLs', async () => {
-    vi.mocked(validateUrlNotPrivate).mockResolvedValueOnce({
-      safe: false,
-      error: 'URL resolves to a private/internal IP range.',
-    });
-    const result = await inspectRemoteImage('https://10.0.0.1/private.png');
+  it('surfaces SSRF-safe redirect failures', async () => {
+    vi.mocked(fetchWithSafeRedirects).mockRejectedValue(
+      new Error('URL resolves to a private/internal IP range.'),
+    );
+    const result = await inspectRemoteImage('https://cdn.example.com/private.png');
     expect(result).toEqual({
       error: 'URL resolves to a private/internal IP range.',
     });
   });
 
   it('rejects images when the server does not expose a file size', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === 'HEAD') {
-        return new Response(null, { status: 405 });
-      }
-      return new Response(toArrayBuffer(makePng(1200, 630)), {
-        status: 200,
-        headers: {
-          'content-type': 'image/png',
-        },
-      });
-    }));
+    vi.mocked(fetchWithSafeRedirects).mockImplementation(
+      async (_url: string, init?: RequestInit) => {
+        if (init?.method === 'HEAD') {
+          return {
+            url: 'https://cdn.example.com/size-less.png',
+            response: new Response(null, { status: 405 }),
+          };
+        }
+
+        return {
+          url: 'https://cdn.example.com/size-less.png',
+          response: new Response(toArrayBuffer(makePng(1200, 630)), {
+            status: 200,
+            headers: {
+              'content-type': 'image/png',
+            },
+          }),
+        };
+      },
+    );
     const result = await inspectRemoteImage('https://cdn.example.com/size-less.png');
     expect(result).toEqual({
       error: 'Image server must provide a file size for validation.',
@@ -95,25 +111,34 @@ describe('inspectRemoteImage', () => {
   });
 
   it('rejects unsupported image types', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === 'HEAD') {
-        return new Response(null, {
-          status: 200,
-          headers: {
-            'content-length': '2048',
-            'content-type': 'image/svg+xml',
-          },
-        });
-      }
-      return new Response('<svg></svg>', {
-        status: 206,
-        headers: {
-          'content-length': '2048',
-          'content-type': 'image/svg+xml',
-          'content-range': 'bytes 0-2047/2048',
-        },
-      });
-    }));
+    vi.mocked(fetchWithSafeRedirects).mockImplementation(
+      async (_url: string, init?: RequestInit) => {
+        if (init?.method === 'HEAD') {
+          return {
+            url: 'https://cdn.example.com/preview.svg',
+            response: new Response(null, {
+              status: 200,
+              headers: {
+                'content-length': '2048',
+                'content-type': 'image/svg+xml',
+              },
+            }),
+          };
+        }
+
+        return {
+          url: 'https://cdn.example.com/preview.svg',
+          response: new Response('<svg></svg>', {
+            status: 206,
+            headers: {
+              'content-length': '2048',
+              'content-type': 'image/svg+xml',
+              'content-range': 'bytes 0-2047/2048',
+            },
+          }),
+        };
+      },
+    );
     const result = await inspectRemoteImage('https://cdn.example.com/preview.svg');
     expect(result).toEqual({
       error: 'Image must be one of: image/png, image/jpeg, image/webp, image/gif.',
@@ -121,25 +146,34 @@ describe('inspectRemoteImage', () => {
   });
 
   it('rejects images that are too small', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === 'HEAD') {
-        return new Response(null, {
-          status: 200,
-          headers: {
-            'content-length': '1024',
-            'content-type': 'image/png',
-          },
-        });
-      }
-      return new Response(toArrayBuffer(makePng(200, 120)), {
-        status: 206,
-        headers: {
-          'content-length': '1024',
-          'content-type': 'image/png',
-          'content-range': 'bytes 0-1023/1024',
-        },
-      });
-    }));
+    vi.mocked(fetchWithSafeRedirects).mockImplementation(
+      async (_url: string, init?: RequestInit) => {
+        if (init?.method === 'HEAD') {
+          return {
+            url: 'https://cdn.example.com/tiny.png',
+            response: new Response(null, {
+              status: 200,
+              headers: {
+                'content-length': '1024',
+                'content-type': 'image/png',
+              },
+            }),
+          };
+        }
+
+        return {
+          url: 'https://cdn.example.com/tiny.png',
+          response: new Response(toArrayBuffer(makePng(200, 120)), {
+            status: 206,
+            headers: {
+              'content-length': '1024',
+              'content-type': 'image/png',
+              'content-range': 'bytes 0-1023/1024',
+            },
+          }),
+        };
+      },
+    );
     const result = await inspectRemoteImage('https://cdn.example.com/tiny.png');
     expect(result).toEqual({
       error: 'Image dimensions must be at least 320×180px.',

@@ -30,11 +30,11 @@ describe('list metadata', () => {
       title: 'my-list',
       description: 'A curated list of 1 link',
       url: 'https://urlist.test/my-list',
-      images: [expect.objectContaining({ url: 'https://urlist.test/my-list/opengraph-image' })],
+      images: [expect.objectContaining({ url: 'https://urlist.test/api/og-image/my-list' })],
     }));
     expect(metadata.twitter).toEqual(expect.objectContaining({
       card: 'summary_large_image',
-      images: ['https://urlist.test/my-list/opengraph-image'],
+      images: ['https://urlist.test/api/og-image/my-list'],
     }));
   });
 

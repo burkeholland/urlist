@@ -18,6 +18,14 @@ interface ListPreviewProps {
 
 type PreviewMode = 'desktop' | 'mobile' | 'social';
 
+function getHostname(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url || 'example.com';
+  }
+}
+
 function PreviewModeButton({
   current,
   mode,
@@ -255,7 +263,7 @@ export function ListPreview({
                       {'ogTitle' in link && link.ogTitle ? link.ogTitle : `Link ${index + 1}`}
                     </div>
                     <div className="xsmall mono muted" style={{ marginBottom: 6 }}>
-                      {'url' in link ? new URL(link.url).hostname : 'example.com'}
+                      {'url' in link ? getHostname(link.url) : 'example.com'}
                     </div>
                     <div className="small muted">
                       {'ogDescription' in link && link.ogDescription

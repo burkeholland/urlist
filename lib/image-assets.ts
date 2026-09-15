@@ -6,7 +6,7 @@ import {
   MIN_IMAGE_WIDTH,
 } from '@/lib/list-branding';
 import { log } from '@/lib/logger';
-import { validateUrlNotPrivate } from '@/lib/network';
+import { fetchWithSafeRedirects } from '@/lib/network';
 import type { ListImageAsset } from '@/lib/types';
 import { normalizeUrl } from '@/lib/url';
 
@@ -221,9 +221,8 @@ function getTimeoutSignal(): AbortSignal {
 
 async function fetchImageHeaders(url: string): Promise<Response | null> {
   try {
-    const response = await fetch(url, {
+    const { response } = await fetchWithSafeRedirects(url, {
       method: 'HEAD',
-      redirect: 'follow',
       signal: getTimeoutSignal(),
     });
     if (response.ok) {
@@ -239,14 +238,14 @@ async function fetchImageHeaders(url: string): Promise<Response | null> {
 }
 
 async function fetchImageBytes(url: string): Promise<Response> {
-  return fetch(url, {
+  const { response } = await fetchWithSafeRedirects(url, {
     method: 'GET',
     headers: {
       Range: `bytes=0-${HEADER_BYTE_LIMIT - 1}`,
     },
-    redirect: 'follow',
     signal: getTimeoutSignal(),
   });
+  return response;
 }
 
 function getResponseContentType(
@@ -285,12 +284,17 @@ export async function inspectRemoteImage(urlInput: string): Promise<{
     return { error: normalized.error || 'A valid image URL is required.' };
   }
 
-  const ssrfCheck = await validateUrlNotPrivate(normalized.url);
-  if (!ssrfCheck.safe) {
-    return { error: ssrfCheck.error };
+  let headResponse: Response | null;
+  try {
+    headResponse = await fetchImageHeaders(normalized.url);
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : 'Could not fetch image metadata.',
+    };
   }
-
-  const headResponse = await fetchImageHeaders(normalized.url);
   const knownSizeFromHead = parseContentLength(
     headResponse?.headers.get('content-length') ?? null,
   );
@@ -307,9 +311,17 @@ export async function inspectRemoteImage(urlInput: string): Promise<{
       level: 'warn',
       message: 'Image validation fetch failed',
       service: 'image-assets',
-      data: { url: normalized.url, error: String(error) },
+      data: {
+        url: normalized.url,
+        error: error instanceof Error ? error.message : String(error),
+      },
     });
-    return { error: 'Could not fetch image metadata.' };
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : 'Could not fetch image metadata.',
+    };
   }
 
   if (!response.ok && response.status !== 206) {
