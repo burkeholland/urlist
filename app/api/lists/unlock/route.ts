@@ -7,33 +7,43 @@ import {
 import { resolveSlug, getList, getListPasswordAccess } from '@/lib/rtdb';
 import { checkRateLimit, getClientIp, RATE_LIMITS } from '@/lib/rate-limiter';
 import { verifyListPassword } from '@/lib/password';
+import { MAX_LIST_PASSWORD_LENGTH } from '@/lib/schemas/shared';
 
 const INVALID_UNLOCK_RESPONSE = {
   error: { code: 'INVALID_PASSWORD', message: 'Unable to unlock this list.' },
 };
+
+function rateLimitResponse(retryAfter = RATE_LIMITS.passwordUnlock.windowSeconds) {
+  return NextResponse.json(
+    {
+      error: {
+        code: 'RATE_LIMIT_EXCEEDED',
+        message: 'Too many unlock attempts. Try again later.',
+        retryAfter,
+      },
+    },
+    { status: 429, headers: { 'Retry-After': String(retryAfter) } },
+  );
+}
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const slug = body && typeof body === 'object' && typeof body.slug === 'string' ? body.slug : '';
   const password = body && typeof body === 'object' && typeof body.password === 'string' ? body.password : '';
 
-  if (!slug || !password) {
+  if (!slug || !password || password.length > MAX_LIST_PASSWORD_LENGTH) {
     return NextResponse.json(INVALID_UNLOCK_RESPONSE, { status: 401 });
   }
 
   const ip = getClientIp(request);
-  const rateCheck = await checkRateLimit(`${ip}:${slug}`, RATE_LIMITS.passwordUnlock);
-  if (!rateCheck.allowed) {
-    return NextResponse.json(
-      {
-        error: {
-          code: 'RATE_LIMIT_EXCEEDED',
-          message: 'Too many unlock attempts. Try again later.',
-          retryAfter: rateCheck.retryAfter,
-        },
-      },
-      { status: 429, headers: { 'Retry-After': String(rateCheck.retryAfter) } },
-    );
+  const clientRateCheck = await checkRateLimit(`${ip}:${slug}`, RATE_LIMITS.passwordUnlock);
+  if (!clientRateCheck.allowed) {
+    return rateLimitResponse(clientRateCheck.retryAfter);
+  }
+
+  const listRateCheck = await checkRateLimit(slug, RATE_LIMITS.passwordUnlockList);
+  if (!listRateCheck.allowed) {
+    return rateLimitResponse(listRateCheck.retryAfter);
   }
 
   const listId = await resolveSlug(slug);

@@ -9,14 +9,19 @@ function createMockRequest(headers: Record<string, string> = {}): NextRequest {
 }
 
 describe('getClientIp', () => {
-  it('extracts first IP from x-forwarded-for', () => {
+  it('extracts the trusted peer from x-forwarded-for', () => {
     const req = createMockRequest({ 'x-forwarded-for': '1.2.3.4, 5.6.7.8' });
-    expect(getClientIp(req)).toBe('1.2.3.4');
+    expect(getClientIp(req)).toBe('5.6.7.8');
   });
 
-  it('trims whitespace around the forwarded IP', () => {
+  it('trims whitespace around the forwarded peer', () => {
     const req = createMockRequest({ 'x-forwarded-for': '  1.2.3.4  , 5.6.7.8' });
-    expect(getClientIp(req)).toBe('1.2.3.4');
+    expect(getClientIp(req)).toBe('5.6.7.8');
+  });
+
+  it('does not trust a spoofed left-most forwarded value', () => {
+    const req = createMockRequest({ 'x-forwarded-for': '203.0.113.99, 198.51.100.10' });
+    expect(getClientIp(req)).toBe('198.51.100.10');
   });
 
   it('returns single IP from x-forwarded-for', () => {
@@ -145,6 +150,8 @@ describe('RATE_LIMITS', () => {
     expect(RATE_LIMITS.ogScrape).toEqual({ endpoint: 'og-scrape', limit: 60, windowSeconds: 3600 });
     expect(RATE_LIMITS.slugCheck).toEqual({ endpoint: 'slug-check', limit: 120, windowSeconds: 3600 });
     expect(RATE_LIMITS.validationError).toEqual({ endpoint: 'validation-error', limit: 60, windowSeconds: 3600 });
+    expect(RATE_LIMITS.passwordUnlock).toEqual({ endpoint: 'password-unlock', limit: 5, windowSeconds: 900 });
+    expect(RATE_LIMITS.passwordUnlockList).toEqual({ endpoint: 'password-unlock-list', limit: 25, windowSeconds: 900 });
   });
 
   it('authenticated limit is higher than anonymous', () => {

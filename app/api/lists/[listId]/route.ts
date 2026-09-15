@@ -14,6 +14,11 @@ import {
   MAX_OG_SITE_NAME_LENGTH,
 } from '@/lib/schemas/shared';
 
+const ACCESS_CONTROL_HEADERS = {
+  'Cache-Control': 'private, no-store',
+  Vary: 'Cookie, Authorization',
+};
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ listId: string }> },
@@ -25,7 +30,7 @@ export async function GET(
   if (!list || !passwordAccess) {
     return NextResponse.json(
       { error: { code: 'LIST_NOT_FOUND', message: 'No list exists with this ID.' } },
-      { status: 404 },
+      { status: 404, headers: ACCESS_CONTROL_HEADERS },
     );
   }
 
@@ -33,7 +38,7 @@ export async function GET(
   if (!allowed) {
     return NextResponse.json(
       { error: { code: 'ACCESS_REQUIRED', message: 'Unlock this list to view it.' } },
-      { status: 403 },
+      { status: 403, headers: ACCESS_CONTROL_HEADERS },
     );
   }
 
@@ -42,11 +47,11 @@ export async function GET(
   if (!listWithLinks) {
     return NextResponse.json(
       { error: { code: 'LIST_NOT_FOUND', message: 'No list exists with this ID.' } },
-      { status: 404 },
+      { status: 404, headers: ACCESS_CONTROL_HEADERS },
     );
   }
 
-  return NextResponse.json(listWithLinks);
+  return NextResponse.json(listWithLinks, { headers: ACCESS_CONTROL_HEADERS });
 }
 
 export async function PATCH(

@@ -10,7 +10,10 @@ vi.mock('@/lib/rtdb', () => ({
 vi.mock('@/lib/rate-limiter', () => ({
   getClientIp: vi.fn().mockReturnValue('1.2.3.4'),
   checkRateLimit: vi.fn().mockResolvedValue({ allowed: true }),
-  RATE_LIMITS: { passwordUnlock: { endpoint: 'password-unlock', limit: 5, windowSeconds: 900 } },
+  RATE_LIMITS: {
+    passwordUnlock: { endpoint: 'password-unlock', limit: 5, windowSeconds: 900 },
+    passwordUnlockList: { endpoint: 'password-unlock-list', limit: 25, windowSeconds: 900 },
+  },
 }));
 vi.mock('@/lib/password', () => ({ verifyListPassword: vi.fn() }));
 
@@ -74,6 +77,29 @@ describe('POST /api/lists/unlock', () => {
     expect(verifyListPassword).not.toHaveBeenCalled();
   });
 
+  it('also rate limits by slug so spoofed client IPs cannot bypass password attempts', async () => {
+    vi.mocked(checkRateLimit)
+      .mockResolvedValueOnce({ allowed: true })
+      .mockResolvedValueOnce({ allowed: false, retryAfter: 120 });
+
+    const response = await POST(req({ slug: 'secret-list', password: 'super-secret' }));
+    const res = await json(response);
+
+    expect(res.status).toBe(429);
+    expect(response.headers.get('Retry-After')).toBe('120');
+    expect(checkRateLimit).toHaveBeenNthCalledWith(
+      1,
+      '1.2.3.4:secret-list',
+      expect.objectContaining({ endpoint: 'password-unlock' }),
+    );
+    expect(checkRateLimit).toHaveBeenNthCalledWith(
+      2,
+      'secret-list',
+      expect.objectContaining({ endpoint: 'password-unlock-list' }),
+    );
+    expect(verifyListPassword).not.toHaveBeenCalled();
+  });
+
   it('returns the same generic error for missing, unknown, and wrong passwords', async () => {
     const missing = await json(await POST(req({ slug: 'secret-list' })));
     expect(missing.status).toBe(401);
@@ -88,5 +114,12 @@ describe('POST /api/lists/unlock', () => {
     const wrong = await json(await POST(req({ slug: 'secret-list', password: 'wrong-password' })));
     expect(wrong.status).toBe(401);
     expect(wrong.body.error.code).toBe('INVALID_PASSWORD');
+  });
+
+  it('rejects oversized passwords before scrypt verification', async () => {
+    const res = await json(await POST(req({ slug: 'secret-list', password: 'x'.repeat(1025) })));
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('INVALID_PASSWORD');
+    expect(verifyListPassword).not.toHaveBeenCalled();
   });
 });

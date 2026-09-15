@@ -48,7 +48,10 @@ describe('GET /api/lists/[listId]', () => {
     vi.mocked(getList).mockResolvedValue(list);
     vi.mocked(getListPasswordAccess).mockResolvedValue({ visibility: 'public', passwordHash: null, passwordUpdatedAt: 0 });
     vi.mocked(getListWithLinks).mockResolvedValue({ listId: 'list-1', ...list, links: [] });
-    const res = await json(await GET(req('GET'), ctx));
+    const response = await GET(req('GET'), ctx);
+    const res = await json(response);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(response.headers.get('Vary')).toBe('Cookie, Authorization');
     expect(res.status).toBe(200);
     expect(res.body.listId).toBe('list-1');
   });
