@@ -56,12 +56,18 @@ describe('member management API', () => {
     expect(res.body.error.code).toBe('LIST_NOT_FOUND');
   });
 
-  it.each(['editor', 'viewer'] as const)('forbids %s collaborators from managing members', async (role) => {
-    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u2' } as any);
-    vi.mocked(getListMembership).mockResolvedValue({ id: 'u2_list-1', uid: 'u2', listId: 'list-1', role, createdAt: 1, updatedAt: 1 });
-    const res = await json(await GET(req('GET'), ctx));
-    expect(res.status).toBe(403);
-    expect(res.body.error.code).toBe('FORBIDDEN');
+  it.each([
+    ['list members', () => GET(req('GET'), ctx)],
+    ['change member roles', () => PATCH(req('PATCH', { role: 'viewer' }), memberCtx())],
+    ['remove members', () => DELETE(req('DELETE'), memberCtx())],
+  ])('forbids editor and viewer collaborators from %s', async (_action, call) => {
+    for (const role of ['editor', 'viewer'] as const) {
+      vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u3' });
+      vi.mocked(getListMembership).mockResolvedValue({ id: 'u3_list-1', uid: 'u3', listId: 'list-1', role, createdAt: 1, updatedAt: 1 });
+      const res = await json(await call());
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('FORBIDDEN');
+    }
   });
 
   it('lists members for owners', async () => {

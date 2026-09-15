@@ -15,10 +15,10 @@ const testUser = {
   avatar: 'https://github.com/testuser.png',
 };
 
-function createRequest(opts: { cookie?: string; bearer?: string } = {}): NextRequest {
+function createRequest(opts: { cookie?: string; bearer?: string; scheme?: string } = {}): NextRequest {
   const headers = new Headers();
   if (opts.bearer) {
-    headers.set('Authorization', `Bearer ${opts.bearer}`);
+    headers.set('Authorization', `${opts.scheme ?? 'Bearer'} ${opts.bearer}`);
   }
   if (opts.cookie) {
     headers.set('Cookie', `session=${opts.cookie}`);

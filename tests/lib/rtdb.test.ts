@@ -49,9 +49,16 @@ function createMockDb(seed: Record<string, Doc[]> = {}) {
           store(name).delete(id);
           return {};
         }),
-        patch: vi.fn(async (ops: { path: string; value: unknown }[]) => {
+        patch: vi.fn(async (body: { op?: string; path: string; value?: unknown }[] | { operations: { op?: string; path: string; value?: unknown }[] }) => {
           const doc = store(name).get(id);
-          for (const op of ops) doc![op.path.slice(1)] = op.value;
+          const ops = Array.isArray(body) ? body : body.operations;
+          for (const op of ops) {
+            if (op.op === 'remove') {
+              delete doc![op.path.slice(1)];
+            } else {
+              doc![op.path.slice(1)] = op.value;
+            }
+          }
           return { resource: doc };
         }),
       }),
@@ -543,6 +550,83 @@ describe('rtdb', () => {
       token: created.token,
       user: { uid: 'u3', username: 'mona', name: 'Mona', avatar: '' },
     })).resolves.toEqual({ status: 'used' });
+  });
+
+  it('reports a concurrently revoked invite when the atomic acceptance claim fails', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1000);
+    const db = createMockDb({
+      lists: [{ id: 'list-1', slug: 's', description: '', ownerId: 'owner', createdAt: 1, updatedAt: 1 }],
+    });
+    vi.mocked(getDb).mockReturnValue(db as unknown as ReturnType<typeof getDb>);
+    const created = await createInvite({ listId: 'list-1', role: 'editor', createdBy: 'owner' });
+
+    let failClaim = true;
+    const racingDb = {
+      ...db,
+      container: vi.fn((name: string) => {
+        const c = db.container(name);
+        if (name !== 'invites') return c;
+        return {
+          ...c,
+          item: (id: string) => {
+            const item = c.item(id);
+            return {
+              ...item,
+              patch: vi.fn(async (body: { op?: string; path: string; value?: unknown }[] | { operations: { op?: string; path: string; value?: unknown }[] }) => {
+                if (id === created.invite.id && failClaim) {
+                  failClaim = false;
+                  db.data.get('invites')!.get(id)!.revokedAt = 1500;
+                  throw Object.assign(new Error('precondition failed'), { code: 412 });
+                }
+                return item.patch(body);
+              }),
+            };
+          },
+        };
+      }),
+    };
+    vi.mocked(getDb).mockReturnValue(racingDb as unknown as ReturnType<typeof getDb>);
+
+    vi.spyOn(Date, 'now').mockReturnValue(2000);
+    await expect(acceptInvite({
+      token: created.token,
+      user: { uid: 'u2', username: 'octo', name: 'Octo', avatar: '' },
+    })).resolves.toEqual({ status: 'revoked' });
+    expect(db.data.get('userLists')?.has('u2_list-1')).not.toBe(true);
+  });
+
+  it('rolls back the invite claim when membership persistence fails', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1000);
+    const db = createMockDb({
+      lists: [{ id: 'list-1', slug: 's', description: '', ownerId: 'owner', createdAt: 1, updatedAt: 1 }],
+    });
+    vi.mocked(getDb).mockReturnValue(db as unknown as ReturnType<typeof getDb>);
+    const created = await createInvite({ listId: 'list-1', role: 'viewer', createdBy: 'owner' });
+
+    const failingMembershipDb = {
+      ...db,
+      container: vi.fn((name: string) => {
+        const c = db.container(name);
+        if (name !== 'userLists') return c;
+        return {
+          ...c,
+          items: {
+            ...c.items,
+            upsert: vi.fn(async () => {
+              throw new Error('membership write failed');
+            }),
+          },
+        };
+      }),
+    };
+    vi.mocked(getDb).mockReturnValue(failingMembershipDb as unknown as ReturnType<typeof getDb>);
+
+    await expect(acceptInvite({
+      token: created.token,
+      user: { uid: 'u2', username: 'octo', name: 'Octo', avatar: '' },
+    })).rejects.toThrow('membership write failed');
+    expect(db.data.get('invites')!.get(created.invite.id)!.acceptedAt).toBeUndefined();
+    expect(db.data.get('invites')!.get(created.invite.id)!.acceptedBy).toBeUndefined();
   });
 
   it('rejects invalid, expired, and revoked invites', async () => {

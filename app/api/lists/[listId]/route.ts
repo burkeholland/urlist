@@ -18,21 +18,37 @@ export async function GET(
   { params }: { params: Promise<{ listId: string }> },
 ) {
   const { listId } = await params;
-  const listWithLinks = await getListWithLinks(listId);
 
-  if (!listWithLinks) {
-    return NextResponse.json(
-      { error: { code: 'LIST_NOT_FOUND', message: 'No list exists with this ID.' } },
-      { status: 404 },
-    );
+  try {
+    const authResult = await verifyAuth(request);
+    requireAuth(authResult);
+
+    const listWithLinks = await getListWithLinks(listId);
+    if (!listWithLinks) {
+      return NextResponse.json(
+        { error: { code: 'LIST_NOT_FOUND', message: 'No list exists with this ID.' } },
+        { status: 404 },
+      );
+    }
+
+    const userRole = await getEffectiveListRole(listId, listWithLinks, authResult.uid);
+    if (!hasMinimumRole(userRole, 'viewer')) {
+      return NextResponse.json(
+        { error: { code: 'FORBIDDEN', message: 'You do not have access to this list.' } },
+        { status: 403 },
+      );
+    }
+
+    return NextResponse.json({ ...listWithLinks, userRole });
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json(
+        { error: { code: error.code, message: error.message } },
+        { status: 401 },
+      );
+    }
+    throw error;
   }
-
-  const authResult = await verifyAuth(request);
-  const userRole = authResult.authenticated && authResult.uid
-    ? await getEffectiveListRole(listId, listWithLinks, authResult.uid)
-    : null;
-
-  return NextResponse.json({ ...listWithLinks, userRole });
 }
 
 export async function PATCH(

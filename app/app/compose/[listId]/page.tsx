@@ -41,7 +41,8 @@ export default function EditComposePage({ params }: EditPageProps) {
       try {
         const res = await fetch(`/api/lists/${listId}`, { credentials: 'include' });
         if (!res.ok) {
-          setError('List not found.');
+          const body = await res.json().catch(() => null);
+          setError(body?.error?.message || 'List not found.');
           return;
         }
         const data: ListWithLinks = await res.json();

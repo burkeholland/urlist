@@ -624,6 +624,24 @@ export type AcceptInviteResult =
   | { status: 'accepted'; listId: string; role: MembershipRole; slug: string }
   | { status: 'invalid' | 'expired' | 'revoked' | 'used' | 'list_not_found' };
 
+function getCosmosStatusCode(err: unknown): number | undefined {
+  return err && typeof err === 'object' && 'code' in err
+    ? (err as { code?: number }).code
+    : undefined;
+}
+
+function classifyInviteFailure(invite: ListInvite | null, now: number): Exclude<AcceptInviteResult, { status: 'accepted'; listId: string; role: MembershipRole; slug: string }> {
+  if (!invite || invite.type !== 'invite') return { status: 'invalid' };
+  if (invite.acceptedAt || invite.acceptedBy) return { status: 'used' };
+  if (invite.revokedAt) return { status: 'revoked' };
+  if (invite.expiresAt <= now) return { status: 'expired' };
+  return { status: 'used' };
+}
+
+function inviteEtag(response: { etag?: string; resource?: (ListInvite & { _etag?: string }) | undefined }): string | undefined {
+  return response.etag ?? response.resource?._etag;
+}
+
 export async function acceptInvite(params: {
   token: string;
   user: AuthUser;
@@ -644,26 +662,37 @@ export async function acceptInvite(params: {
   const invite = resources[0];
   if (!invite || invite.type !== 'invite') return { status: 'invalid' };
   const now = Date.now();
-  if (invite.acceptedAt || invite.acceptedBy) return { status: 'used' };
-  if (invite.revokedAt) return { status: 'revoked' };
-  if (invite.expiresAt <= now) return { status: 'expired' };
+  const initialFailure = classifyInviteFailure(invite, now);
+  if (initialFailure.status !== 'used' || invite.acceptedAt || invite.acceptedBy) {
+    return initialFailure;
+  }
 
   const list = await getList(invite.listId);
   if (!list) return { status: 'list_not_found' };
 
-  const acceptanceId = `${invite.id}_accepted`;
+  const inviteItem = db.container('invites').item(invite.id, invite.listId);
+  const claimTime = Date.now();
+  let claimEtag: string | undefined;
   try {
-    await db.container('invites').items.create({
-      id: acceptanceId,
-      type: 'inviteAcceptance',
-      listId: invite.listId,
-      inviteId: invite.id,
-      acceptedBy: params.user.uid,
-      acceptedAt: now,
-    });
+    const claimResponse = await inviteItem.patch<ListInvite & { _etag?: string }>(
+      {
+        operations: [
+          { op: 'set', path: '/acceptedAt', value: claimTime },
+          { op: 'set', path: '/acceptedBy', value: params.user.uid },
+        ],
+        condition:
+          `FROM c WHERE c.type = 'invite' ` +
+          `AND (NOT IS_DEFINED(c.acceptedAt) OR IS_NULL(c.acceptedAt)) ` +
+          `AND (NOT IS_DEFINED(c.acceptedBy) OR IS_NULL(c.acceptedBy)) ` +
+          `AND (NOT IS_DEFINED(c.revokedAt) OR IS_NULL(c.revokedAt)) ` +
+          `AND c.expiresAt > ${claimTime}`,
+      },
+    );
+    claimEtag = inviteEtag(claimResponse);
   } catch (err: unknown) {
-    if (err && typeof err === 'object' && 'code' in err && (err as { code: number }).code === 409) {
-      return { status: 'used' };
+    if (getCosmosStatusCode(err) === 412) {
+      const { resource: currentInvite } = await inviteItem.read<ListInvite>();
+      return classifyInviteFailure(currentInvite ?? null, Date.now());
     }
     throw err;
   }
@@ -680,15 +709,24 @@ export async function acceptInvite(params: {
       listId: invite.listId,
       role,
       invitedBy: invite.createdBy,
-      acceptedAt: now,
+      acceptedAt: claimTime,
       user: params.user,
     });
-    await db.container('invites').item(invite.id, invite.listId).patch([
-      { op: 'set', path: '/acceptedAt', value: now },
-      { op: 'set', path: '/acceptedBy', value: params.user.uid },
-    ]);
   } catch (err) {
-    await db.container('invites').item(acceptanceId, invite.listId).delete().catch(() => undefined);
+    await inviteItem.patch(
+      [
+        { op: 'remove', path: '/acceptedAt' },
+        { op: 'remove', path: '/acceptedBy' },
+      ],
+      claimEtag ? { accessCondition: { type: 'IfMatch', condition: claimEtag } } : undefined,
+    ).catch((rollbackErr) => {
+      log({
+        level: 'warn',
+        message: 'Failed to roll back invite acceptance after membership failure',
+        service: 'rtdb',
+        data: { inviteId: invite.id, listId: invite.listId, userId: params.user.uid, error: String(rollbackErr) },
+      });
+    });
     throw err;
   }
 

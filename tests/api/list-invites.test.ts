@@ -52,12 +52,19 @@ describe('invite management API', () => {
     expect(res.status).toBe(401);
   });
 
-  it.each(['editor', 'viewer'] as const)('forbids %s collaborators from managing invites', async (role) => {
-    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u2' } as any);
-    vi.mocked(getListMembership).mockResolvedValue({ id: 'u2_list-1', uid: 'u2', listId: 'list-1', role, createdAt: 1, updatedAt: 1 });
-    const res = await json(await POST(req('POST', { role: 'editor' }), ctx));
-    expect(res.status).toBe(403);
-    expect(res.body.error.code).toBe('FORBIDDEN');
+  it.each([
+    ['list invites', () => GET(req('GET'), ctx)],
+    ['create invites', () => POST(req('POST', { role: 'editor' }), ctx)],
+    ['revoke invites', () => DELETE(req('DELETE'), inviteCtx)],
+    ['rotate invites', () => ROTATE(req('POST', { expiresInDays: 5 }), inviteCtx)],
+  ])('forbids editor and viewer collaborators from %s', async (_action, call) => {
+    for (const role of ['editor', 'viewer'] as const) {
+      vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u2' });
+      vi.mocked(getListMembership).mockResolvedValue({ id: 'u2_list-1', uid: 'u2', listId: 'list-1', role, createdAt: 1, updatedAt: 1 });
+      const res = await json(await call());
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('FORBIDDEN');
+    }
   });
 
   it('lists safe invite metadata without token hashes', async () => {

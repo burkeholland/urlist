@@ -30,8 +30,18 @@ const list = { slug: 's', description: '', ownerId: 'u1', createdAt: 1, updatedA
 describe('GET /api/lists/[listId]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: false, uid: null } as any);
+    vi.mocked(requireAuth).mockImplementation(() => undefined);
+    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u1' });
     vi.mocked(getListMembership).mockResolvedValue(null);
+  });
+
+  it('returns 401 when not authenticated', async () => {
+    vi.mocked(requireAuth).mockImplementation(() => {
+      throw new AuthError('UNAUTHORIZED', 'Sign in');
+    });
+    const res = await json(await GET(req('GET'), ctx));
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('UNAUTHORIZED');
   });
 
   it('returns 404 when list is not found', async () => {
@@ -49,8 +59,16 @@ describe('GET /api/lists/[listId]', () => {
     expect(res.body.listId).toBe('list-1');
   });
 
+  it('returns 403 when the authenticated user is not a collaborator', async () => {
+    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u2' });
+    vi.mocked(getListWithLinks).mockResolvedValue({ listId: 'list-1', ...list, links: [] });
+    const res = await json(await GET(req('GET'), ctx));
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('FORBIDDEN');
+  });
+
   it('returns the authenticated user role when the user is a collaborator', async () => {
-    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u2' } as any);
+    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u2' });
     vi.mocked(getListMembership).mockResolvedValue({ id: 'u2_list-1', uid: 'u2', listId: 'list-1', role: 'viewer', createdAt: 1, updatedAt: 1 });
     vi.mocked(getListWithLinks).mockResolvedValue({ listId: 'list-1', ...list, links: [] });
     const res = await json(await GET(req('GET'), ctx));
