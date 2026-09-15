@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { NavHeader } from '@/components/nav-header';
 import { UrlInput } from '@/components/url-input';
 import { SortableLinkList } from '@/components/sortable-link-list';
+import { CollectionImport, type ImportableDraftLink } from '@/components/collection-import';
 import { useDraft } from '@/hooks/use-draft';
 import { useAuth } from '@/hooks/use-auth';
 import type { DraftLink, ListWithLinks } from '@/lib/types';
@@ -53,6 +54,7 @@ export default function EditComposePage({ params }: EditPageProps) {
               url: l.url,
               position: l.position,
               pinned: l.pinned ?? false,
+              folder: l.folder ?? null,
               ogTitle: l.ogTitle,
               ogDescription: l.ogDescription,
               ogImage: l.ogImage,
@@ -114,6 +116,19 @@ export default function EditComposePage({ params }: EditPageProps) {
     [links.length, addLink, updateLink]
   );
 
+  const handleImportLinks = useCallback((imported: ImportableDraftLink[]) => {
+    setLinks((prev) => [
+      ...prev,
+      ...imported.map((link, index) => ({
+        ...link,
+        id: nanoid(10),
+        position: prev.length + index,
+        ogLoading: false,
+      })),
+    ].map((link, index) => ({ ...link, position: index })));
+    setError(null);
+  }, [setLinks]);
+
   const handleSave = async () => {
     if (!listData) return;
     setSaving(true);
@@ -139,6 +154,7 @@ export default function EditComposePage({ params }: EditPageProps) {
             url: l.url,
             position: i,
             pinned: l.pinned,
+            folder: l.folder,
             ogTitle: l.ogTitle,
             ogDescription: l.ogDescription,
             ogImage: l.ogImage,
@@ -273,6 +289,7 @@ export default function EditComposePage({ params }: EditPageProps) {
         <div className="field-group">
           <label className="label">Add links</label>
           <UrlInput onSubmit={handleAddUrl} placeholder="Paste a URL..." size="large" />
+          <CollectionImport currentLinks={links} onImport={handleImportLinks} />
         </div>
 
         <section className="field-group">

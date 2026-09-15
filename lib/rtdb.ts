@@ -18,7 +18,7 @@ export async function getList(listId: string): Promise<ListRecord | null> {
 export async function getLinks(listId: string): Promise<LinkWithId[]> {
   const { resources } = await getDb()
     .container('links')
-    .items.query<{ id: string; listId: string; url: string; position: number; pinned: boolean | undefined; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null; createdAt: number }>({
+    .items.query<{ id: string; listId: string; url: string; position: number; pinned: boolean | undefined; folder?: string | null; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null; createdAt: number }>({
       query: 'SELECT * FROM c WHERE c.listId = @listId ORDER BY c.position ASC',
       parameters: [{ name: '@listId', value: listId }],
     })
@@ -128,7 +128,7 @@ export async function createList(params: {
   slug: string;
   description: string;
   ownerId: string | null;
-  links: { id: string; url: string; position: number; pinned: boolean; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null }[];
+  links: { id: string; url: string; position: number; pinned: boolean; folder?: string | null; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null }[];
 }): Promise<void> {
   const { listId, slug, description, ownerId, links } = params;
   const now = Date.now();
@@ -152,6 +152,7 @@ export async function createList(params: {
         url: link.url,
         position: link.position,
         pinned: link.pinned,
+        folder: link.folder ?? null,
         ogTitle: link.ogTitle,
         ogDescription: link.ogDescription,
         ogImage: link.ogImage,
@@ -174,7 +175,7 @@ export async function createList(params: {
 export async function updateList(params: {
   listId: string;
   description?: string;
-  links?: { id: string; url: string; position: number; pinned: boolean; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null }[];
+  links?: { id: string; url: string; position: number; pinned: boolean; folder?: string | null; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null }[];
 }): Promise<number> {
   const { listId, description, links } = params;
   const now = Date.now();
@@ -209,6 +210,7 @@ export async function updateList(params: {
           url: link.url,
           position: link.position,
           pinned: link.pinned,
+          folder: link.folder ?? null,
           ogTitle: link.ogTitle,
           ogDescription: link.ogDescription,
           ogImage: link.ogImage,
@@ -292,7 +294,7 @@ export async function getListsWithLinks(listIds: string[]): Promise<ListWithLink
 
   // Single query for all links across all lists
   const { resources: allLinks } = await db.container('links').items
-    .query<{ id: string; listId: string; url: string; position: number; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null; createdAt: number }>({
+    .query<{ id: string; listId: string; url: string; position: number; pinned?: boolean; folder?: string | null; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null; createdAt: number }>({
       query: `SELECT * FROM c WHERE c.listId IN (${listIds.map((_, i) => `@id${i}`).join(',')}) ORDER BY c.position ASC`,
       parameters: listIds.map((id, i) => ({ name: `@id${i}`, value: id })),
     })

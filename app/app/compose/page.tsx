@@ -7,6 +7,7 @@ import { SlugInput } from '@/components/slug-input';
 import { UrlInput } from '@/components/url-input';
 import { SortableLinkList } from '@/components/sortable-link-list';
 import { PublishButton } from '@/components/publish-button';
+import { CollectionImport, type ImportableDraftLink } from '@/components/collection-import';
 import { useDraft } from '@/hooks/use-draft';
 import { useDebounce } from '@/hooks/use-debounce';
 import { validateSlugFormat } from '@/lib/slug';
@@ -23,6 +24,7 @@ function ComposeContent() {
     description,
     setDescription,
     links,
+    setLinks,
     loaded,
     addLink,
     updateLink,
@@ -109,6 +111,19 @@ function ComposeContent() {
     [links.length, addLink, updateLink]
   );
 
+  const handleImportLinks = useCallback((imported: ImportableDraftLink[]) => {
+    setLinks((prev) => [
+      ...prev,
+      ...imported.map((link, index) => ({
+        ...link,
+        id: nanoid(10),
+        position: prev.length + index,
+        ogLoading: false,
+      })),
+    ].map((link, index) => ({ ...link, position: index })));
+    setError(null);
+  }, [setLinks]);
+
   // Auto-add URL from query param, then strip it so refreshes don't re-add
   useEffect(() => {
     if (loaded && !initialUrlProcessed) {
@@ -138,6 +153,7 @@ function ComposeContent() {
             url: l.url,
             position: i,
             pinned: l.pinned,
+            folder: l.folder,
             ogTitle: l.ogTitle,
             ogDescription: l.ogDescription,
             ogImage: l.ogImage,
@@ -251,6 +267,8 @@ function ComposeContent() {
             placeholder="https://example.com"
             size="large"
           />
+
+          <CollectionImport currentLinks={links} onImport={handleImportLinks} />
 
           <div className="section-head">
             <h2>

@@ -13,6 +13,7 @@ const DraftLinkSchema = z.object({
   url: z.string(),
   position: z.number(),
   pinned: z.boolean().optional().default(false),
+  folder: z.string().nullable().optional(),
   ogTitle: z.string().nullable(),
   ogDescription: z.string().nullable(),
   ogImage: z.string().nullable(),
@@ -94,12 +95,15 @@ export function useDraft(listId?: string) {
 
   // Load draft from localStorage after hydration to avoid server/client mismatch
   useEffect(() => {
-    const draft = loadDraft(listId);
-    if (draft) {
-      setState((prev) => ({ ...prev, slug: draft.slug, description: draft.description, links: draft.links, loaded: true }));
-    } else {
-      setState((prev) => ({ ...prev, loaded: true }));
-    }
+    const timer = window.setTimeout(() => {
+      const draft = loadDraft(listId);
+      if (draft) {
+        setState((prev) => ({ ...prev, slug: draft.slug, description: draft.description, links: draft.links, loaded: true }));
+      } else {
+        setState((prev) => ({ ...prev, loaded: true }));
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [listId]);
 
   const { slug, description, links, loaded } = state;

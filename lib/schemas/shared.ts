@@ -8,6 +8,7 @@ export const MAX_DESCRIPTION_LENGTH = 280;
 export const MAX_OG_TITLE_LENGTH = 200;
 export const MAX_OG_DESCRIPTION_LENGTH = 500;
 export const MAX_OG_SITE_NAME_LENGTH = 100;
+export const MAX_FOLDER_LENGTH = 200;
 
 // --- Sanitization ---
 
@@ -40,6 +41,7 @@ const LinkInputSchema = z.object({
   url: z.string().min(1),
   position: z.number().int().min(0),
   pinned: z.boolean().optional().default(false),
+  folder: z.string().nullable().optional(),
   ogTitle: z.string().nullable().optional(),
   ogDescription: z.string().nullable().optional(),
   ogImage: z.string().nullable().optional(),
