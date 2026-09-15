@@ -5,6 +5,7 @@ A link-list sharing app. Create curated collections of URLs, give them a custom 
 ## Features
 
 - **Create & organize link lists** — add URLs, drag-and-drop to reorder, and auto-fetch Open Graph metadata (titles, descriptions, images)
+- **Quick capture** — save the current page into an existing list with the in-app bookmarklet or installed PWA share target
 - **Pin a link** — pin one link to the top of a list to highlight it; pinned links are visually marked in the public view
 - **Custom slugs** — publish your list at a memorable URL like `/my-awesome-links`
 - **Public link sharing** — published URL cards include one-click copy buttons for individual links
@@ -63,7 +64,7 @@ Pull requests automatically run the test suite through GitHub Actions.
 ```
 app/                  # Next.js App Router pages & API routes
 ├── api/              # REST API (auth, lists, og, slugs, analytics)
-├── app/              # Authenticated app pages (compose, my-links)
+├── app/              # Authenticated app pages (compose, capture, my-links)
 └── [...slug]/        # Public list viewer (catch-all route)
 components/           # React components
 hooks/                # Custom React hooks

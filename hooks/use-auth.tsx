@@ -12,7 +12,7 @@ export interface SessionUser {
 interface AuthContextType {
   user: SessionUser | null;
   loading: boolean;
-  signIn: () => void;
+  signIn: (returnTo?: string) => void;
   signOut: () => Promise<void>;
 }
 
@@ -45,7 +45,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signIn = useCallback(() => {
+  const signIn = useCallback((returnTo?: string) => {
+    if (returnTo) {
+      window.location.href = `/api/auth/login?returnTo=${encodeURIComponent(returnTo)}`;
+      return;
+    }
     window.location.href = '/api/auth/login';
   }, []);
 

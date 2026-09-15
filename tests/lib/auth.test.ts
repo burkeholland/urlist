@@ -1,8 +1,15 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest';
-import { _resetSecretCache, createSessionToken, verifyAuth, getSessionUser, AuthError, requireAuth } from '@/lib/auth';
 import { NextRequest } from 'next/server';
+import {
+  _resetSecretCache,
+  createSessionToken,
+  verifyAuth,
+  getSessionUser,
+  AuthError,
+  normalizeSafeReturnTo,
+  requireAuth,
+} from '@/lib/auth';
 
-// Set AUTH_SECRET for tests (must happen before any auth function call)
 beforeAll(() => {
   process.env.AUTH_SECRET = 'test-secret-for-vitest-minimum-32-chars';
   _resetSecretCache();
@@ -15,10 +22,10 @@ const testUser = {
   avatar: 'https://github.com/testuser.png',
 };
 
-function createRequest(opts: { cookie?: string; bearer?: string } = {}): NextRequest {
+function createRequest(opts: { cookie?: string; bearer?: string; scheme?: string } = {}): NextRequest {
   const headers = new Headers();
   if (opts.bearer) {
-    headers.set('Authorization', `Bearer ${opts.bearer}`);
+    headers.set('Authorization', `${opts.scheme || 'Bearer'} ${opts.bearer}`);
   }
   if (opts.cookie) {
     headers.set('Cookie', `session=${opts.cookie}`);
@@ -89,7 +96,7 @@ describe('verifyAuth', () => {
     expect(result.uid).toBe('user123');
   });
 
-  it('accepts a case-insensitive Bearer scheme', async () => {
+  it('accepts a case-insensitive bearer scheme', async () => {
     const token = await createSessionToken(testUser);
     const req = createRequest({ bearer: token, scheme: 'bearer' });
     const result = await verifyAuth(req);
@@ -103,15 +110,15 @@ describe('verifyAuth', () => {
     expect(result.authenticated).toBe(false);
   });
 
-  it('rejects a Bearer header with an empty token', async () => {
+  it('rejects a bearer header with an empty token', async () => {
     const headers = new Headers({ Authorization: 'Bearer ' });
     const req = new NextRequest('http://localhost:3000/api/test', { headers });
     const result = await verifyAuth(req);
     expect(result.authenticated).toBe(false);
   });
 
-  it('rejects a Bearer header where whitespace separates junk', async () => {
-    const headers = new Headers({ Authorization: 'Bearer  notajwt' });
+  it('rejects a bearer header where whitespace separates junk', async () => {
+    const headers = new Headers({ Authorization: 'Bearer abc def' });
     const req = new NextRequest('http://localhost:3000/api/test', { headers });
     const result = await verifyAuth(req);
     expect(result.authenticated).toBe(false);
@@ -124,7 +131,7 @@ describe('verifyAuth', () => {
     expect(result.authenticated).toBe(false);
   });
 
-  it('rejects a Bearer header with trailing junk', async () => {
+  it('rejects a bearer header with trailing junk', async () => {
     const token = await createSessionToken(testUser);
     const headers = new Headers({ Authorization: `Bearer ${token} trailing` });
     const req = new NextRequest('http://localhost:3000/api/test', { headers });
@@ -212,8 +219,8 @@ describe('requireAuth', () => {
     try {
       requireAuth({ authenticated: false, uid: null });
       expect.unreachable();
-    } catch (e) {
-      const err = e as AuthError;
+    } catch (error) {
+      const err = error as AuthError;
       expect(err.code).toBe('UNAUTHORIZED');
       expect(err.message).toBe('Missing or invalid auth token.');
     }
@@ -230,6 +237,17 @@ describe('AuthError', () => {
   });
 });
 
+describe('normalizeSafeReturnTo', () => {
+  it('accepts app-relative paths', () => {
+    expect(normalizeSafeReturnTo('/app/capture?foo=bar#baz')).toBe('/app/capture?foo=bar#baz');
+  });
+
+  it('rejects empty, protocol-relative, and absolute URLs', () => {
+    expect(normalizeSafeReturnTo('')).toBeNull();
+    expect(normalizeSafeReturnTo('//evil.test')).toBeNull();
+    expect(normalizeSafeReturnTo('https://evil.test')).toBeNull();
+  });
+});
 
 describe('JWT security boundaries', () => {
   it('rejects expired tokens', async () => {

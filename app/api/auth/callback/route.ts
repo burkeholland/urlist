@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSessionToken } from '@/lib/auth';
+import { createSessionToken, normalizeSafeReturnTo } from '@/lib/auth';
 import { z } from 'zod';
 
 const GitHubTokenSchema = z.object({
@@ -15,6 +15,7 @@ const GitHubUserSchema = z.object({
 function clearStateAndRedirect(request: NextRequest, errorCode: string): NextResponse {
   const response = NextResponse.redirect(new URL(`/?error=${errorCode}`, request.url));
   response.cookies.set('oauth_state', '', { maxAge: 0, path: '/' });
+  response.cookies.set('oauth_return_to', '', { maxAge: 0, path: '/' });
   return response;
 }
 
@@ -88,10 +89,12 @@ export async function GET(request: NextRequest) {
     avatar: `https://github.com/${ghUser.login}.png`,
   });
 
-  const response = NextResponse.redirect(new URL('/app/compose', request.url));
+  const returnTo = normalizeSafeReturnTo(request.cookies.get('oauth_return_to')?.value) || '/app/compose';
+  const response = NextResponse.redirect(new URL(returnTo, request.url));
 
   // Clear OAuth state cookie
   response.cookies.set('oauth_state', '', { maxAge: 0, path: '/' });
+  response.cookies.set('oauth_return_to', '', { maxAge: 0, path: '/' });
 
   response.cookies.set('session', sessionToken, {
     httpOnly: true,

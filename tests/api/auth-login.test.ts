@@ -46,6 +46,21 @@ describe('GET /api/auth/login', () => {
     expect(location).toContain(`state=${cookieState}`);
   });
 
+  it('stores a validated returnTo path for the callback redirect', async () => {
+    const req = new NextRequest('http://localhost:3000/api/auth/login?returnTo=%2Fapp%2Fcapture');
+    const res = await GET(req);
+    const returnToCookie = res.headers.getSetCookie().find(c => c.startsWith('oauth_return_to='));
+    expect(returnToCookie).toContain('oauth_return_to=%2Fapp%2Fcapture');
+    expect(returnToCookie).toContain('HttpOnly');
+  });
+
+  it('clears invalid returnTo values instead of storing them', async () => {
+    const req = new NextRequest('http://localhost:3000/api/auth/login?returnTo=https%3A%2F%2Fevil.test');
+    const res = await GET(req);
+    const returnToCookie = res.headers.getSetCookie().find(c => c.startsWith('oauth_return_to='));
+    expect(returnToCookie).toContain('Max-Age=0');
+  });
+
   it('returns 500 when GITHUB_CLIENT_ID is not configured', async () => {
     delete process.env.GITHUB_CLIENT_ID;
     const req = new NextRequest('http://localhost:3000/api/auth/login');
