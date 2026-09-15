@@ -23,6 +23,7 @@ export default function EditComposePage({ params }: EditPageProps) {
   const [listData, setListData] = useState<ListWithLinks | null>(null);
   const [fetching, setFetching] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [healthActionId, setHealthActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Redirect if not authenticated
@@ -57,6 +58,18 @@ export default function EditComposePage({ params }: EditPageProps) {
               ogDescription: l.ogDescription,
               ogImage: l.ogImage,
               ogSiteName: l.ogSiteName,
+              ogTitleUserEdited: l.ogTitleUserEdited,
+              ogDescriptionUserEdited: l.ogDescriptionUserEdited,
+              healthStatus: l.healthStatus,
+              healthReason: l.healthReason,
+              healthCheckedAt: l.healthCheckedAt,
+              healthFinalUrl: l.healthFinalUrl,
+              healthHttpStatus: l.healthHttpStatus,
+              healthFailureCount: l.healthFailureCount,
+              healthNextCheckAt: l.healthNextCheckAt,
+              healthDismissedAt: l.healthDismissedAt,
+              metadataRefreshedAt: l.metadataRefreshedAt,
+              metadataRefreshStatus: l.metadataRefreshStatus,
             }))
           );
         }
@@ -101,6 +114,8 @@ export default function EditComposePage({ params }: EditPageProps) {
               ogDescription: data.ogDescription,
               ogImage: data.ogImage,
               ogSiteName: data.ogSiteName,
+              ogTitleUserEdited: false,
+              ogDescriptionUserEdited: false,
               ogLoading: false,
             });
           } else {
@@ -112,6 +127,32 @@ export default function EditComposePage({ params }: EditPageProps) {
         });
     },
     [links.length, addLink, updateLink]
+  );
+
+  const handleHealthAction = useCallback(
+    async (linkId: string, action: 'recheck' | 'dismiss') => {
+      setHealthActionId(linkId);
+      setError(null);
+      try {
+        const res = await fetch(`/api/lists/${listId}/links/${linkId}/health`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, refreshMetadata: true }),
+        });
+        const body = await res.json();
+        if (!res.ok) {
+          setError(body.error?.message || 'Failed to update link health.');
+          return;
+        }
+        updateLink(linkId, body.data);
+      } catch {
+        setError('Failed to update link health.');
+      } finally {
+        setHealthActionId(null);
+      }
+    },
+    [listId, updateLink],
   );
 
   const handleSave = async () => {
@@ -143,6 +184,8 @@ export default function EditComposePage({ params }: EditPageProps) {
             ogDescription: l.ogDescription,
             ogImage: l.ogImage,
             ogSiteName: l.ogSiteName,
+            ogTitleUserEdited: l.ogTitleUserEdited,
+            ogDescriptionUserEdited: l.ogDescriptionUserEdited,
           })),
         }),
       });
@@ -282,7 +325,16 @@ export default function EditComposePage({ params }: EditPageProps) {
             </h2>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <SortableLinkList links={links} onReorder={reorderLinks} onDelete={removeLink} onUpdate={updateLink} onPin={pinLink} />
+            <SortableLinkList
+              links={links}
+              onReorder={reorderLinks}
+              onDelete={removeLink}
+              onUpdate={updateLink}
+              onPin={pinLink}
+              onRecheck={(id) => void handleHealthAction(id, 'recheck')}
+              onDismissHealth={(id) => void handleHealthAction(id, 'dismiss')}
+              healthActionId={healthActionId}
+            />
           </div>
         </section>
 

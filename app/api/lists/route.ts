@@ -186,6 +186,8 @@ export async function POST(request: NextRequest) {
     ogDescription: sanitizeText(link.ogDescription, MAX_OG_DESCRIPTION_LENGTH),
     ogImage: link.ogImage && isValidHttpUrl(link.ogImage) ? link.ogImage : null,
     ogSiteName: sanitizeText(link.ogSiteName, MAX_OG_SITE_NAME_LENGTH),
+    ogTitleUserEdited: link.ogTitleUserEdited,
+    ogDescriptionUserEdited: link.ogDescriptionUserEdited,
   }));
 
   // Write to database — clean up all artifacts if createList fails

@@ -9,6 +9,9 @@ interface LinkCardProps {
   onDelete?: (id: string) => void;
   onUpdate?: (id: string, updates: Partial<DraftLink>) => void;
   onPin?: (id: string) => void;
+  onRecheck?: (id: string) => void;
+  onDismissHealth?: (id: string) => void;
+  healthActionId?: string | null;
   isPublicView?: boolean;
 }
 
@@ -20,7 +23,42 @@ function getHostname(url: string): string {
   }
 }
 
-export function LinkCard({ link, onDelete, onUpdate, onPin, isPublicView = false }: LinkCardProps) {
+function formatHealthDate(value?: number | null): string {
+  if (!value) return 'Never checked';
+  return new Date(value).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function healthLabel(link: DraftLink | LinkWithId): {
+  label: string;
+  detail: string;
+  className: string;
+  attention: boolean;
+} {
+  const status = link.healthStatus ?? 'unchecked';
+  const finalUrl = link.healthFinalUrl && link.healthFinalUrl !== link.url ? ` → ${getHostname(link.healthFinalUrl)}` : '';
+  if (status === 'healthy') return { label: 'Healthy', detail: `Checked ${formatHealthDate(link.healthCheckedAt)}`, className: 'health-ok', attention: false };
+  if (status === 'redirected') return { label: 'Redirected', detail: `Destination redirects${finalUrl}`, className: 'health-warn', attention: true };
+  if (status === 'transient') return { label: 'Possibly broken', detail: `Temporary failure: ${link.healthReason ?? 'unknown'}`, className: 'health-warn', attention: true };
+  if (status === 'broken') return { label: 'Broken', detail: `Failure: ${link.healthReason ?? 'unknown'}`, className: 'health-bad', attention: true };
+  if (status === 'dismissed') return { label: 'Dismissed', detail: `Hidden until next check`, className: 'health-muted', attention: false };
+  return { label: 'Unchecked', detail: 'Run a link check to verify this destination.', className: 'health-muted', attention: false };
+}
+
+export function LinkCard({
+  link,
+  onDelete,
+  onUpdate,
+  onPin,
+  onRecheck,
+  onDismissHealth,
+  healthActionId,
+  isPublicView = false,
+}: LinkCardProps) {
   const [imgError, setImgError] = useState(false);
   const [editingField, setEditingField] = useState<'title' | 'description' | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -30,6 +68,8 @@ export function LinkCard({ link, onDelete, onUpdate, onPin, isPublicView = false
   const description = link.ogDescription;
   const isLoading = 'ogLoading' in link && link.ogLoading;
   const isPinned = link.pinned ?? false;
+  const health = healthLabel(link);
+  const healthBusy = healthActionId === link.id;
 
   useEffect(() => {
     if (editingField && inputRef.current) {
@@ -46,8 +86,11 @@ export function LinkCard({ link, onDelete, onUpdate, onPin, isPublicView = false
 
   const commitEdit = () => {
     if (!editingField || !onUpdate) return;
-    const key = editingField === 'title' ? 'ogTitle' : 'ogDescription';
-    onUpdate(link.id, { [key]: editValue || null });
+    if (editingField === 'title') {
+      onUpdate(link.id, { ogTitle: editValue || null, ogTitleUserEdited: true });
+    } else {
+      onUpdate(link.id, { ogDescription: editValue || null, ogDescriptionUserEdited: true });
+    }
     setEditingField(null);
   };
 
@@ -155,6 +198,35 @@ export function LinkCard({ link, onDelete, onUpdate, onPin, isPublicView = false
             title={onUpdate ? 'Click to edit description' : undefined}
           >{description || (onUpdate ? 'Add a description…' : '')}</div>
         )}
+        {(onRecheck || link.healthStatus) && (
+          <div className="link-health">
+            <span className={`health-pill ${health.className}`}>{health.label}</span>
+            <span className="health-detail">{health.detail}</span>
+            {link.metadataRefreshStatus === 'updated' && (
+              <span className="health-detail">Preview refreshed</span>
+            )}
+            {onRecheck && (
+              <button
+                type="button"
+                className="health-action"
+                disabled={healthBusy}
+                onClick={() => onRecheck(link.id)}
+              >
+                {healthBusy ? 'Checking…' : 'Recheck + refresh preview'}
+              </button>
+            )}
+            {onDismissHealth && health.attention && (
+              <button
+                type="button"
+                className="health-action"
+                disabled={healthBusy}
+                onClick={() => onDismissHealth(link.id)}
+              >
+                Dismiss
+              </button>
+            )}
+          </div>
+        )}
       </div>
       {onPin && (
         <button
@@ -196,6 +268,51 @@ export function LinkCard({ link, onDelete, onUpdate, onPin, isPublicView = false
           0% { transform: translateX(-100%); }
           50% { transform: translateX(150%); }
           100% { transform: translateX(150%); }
+        }
+        .link-health {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 6px;
+          margin-top: 8px;
+          font-size: 11px;
+        }
+        .health-pill {
+          border-radius: 999px;
+          padding: 2px 7px;
+          font-family: var(--font-mono);
+        }
+        .health-ok {
+          background: rgba(34, 197, 94, 0.12);
+          color: #16803a;
+        }
+        .health-warn {
+          background: rgba(245, 158, 11, 0.14);
+          color: #a15c00;
+        }
+        .health-bad {
+          background: rgba(239, 68, 68, 0.13);
+          color: var(--danger);
+        }
+        .health-muted {
+          background: var(--bg-secondary);
+          color: var(--text-muted);
+        }
+        .health-detail {
+          color: var(--text-muted);
+        }
+        .health-action {
+          border: none;
+          background: var(--bg-secondary);
+          color: var(--text);
+          border-radius: 999px;
+          padding: 2px 7px;
+          cursor: pointer;
+          font-size: 11px;
+        }
+        .health-action:disabled {
+          cursor: not-allowed;
+          opacity: 0.6;
         }
       `}</style>
     </div>

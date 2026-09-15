@@ -17,7 +17,33 @@ const DraftLinkSchema = z.object({
   ogDescription: z.string().nullable(),
   ogImage: z.string().nullable(),
   ogSiteName: z.string().nullable(),
+  ogTitleUserEdited: z.boolean().optional(),
+  ogDescriptionUserEdited: z.boolean().optional(),
   ogLoading: z.boolean().optional(),
+  healthStatus: z.enum(['unchecked', 'healthy', 'redirected', 'transient', 'broken', 'dismissed']).optional(),
+  healthReason: z.enum([
+    'unchecked',
+    'ok',
+    'redirect',
+    'http_404',
+    'http_410',
+    'http_5xx',
+    'dns_error',
+    'timeout',
+    'repeated_timeout',
+    'network_error',
+    'ssrf_blocked',
+    'too_many_redirects',
+    'dismissed',
+  ]).optional(),
+  healthCheckedAt: z.number().nullable().optional(),
+  healthFinalUrl: z.string().nullable().optional(),
+  healthHttpStatus: z.number().nullable().optional(),
+  healthFailureCount: z.number().optional(),
+  healthNextCheckAt: z.number().nullable().optional(),
+  healthDismissedAt: z.number().nullable().optional(),
+  metadataRefreshedAt: z.number().nullable().optional(),
+  metadataRefreshStatus: z.enum(['skipped', 'updated', 'unchanged', 'failed']).optional(),
 });
 
 const DraftSchema = z.object({
@@ -94,12 +120,19 @@ export function useDraft(listId?: string) {
 
   // Load draft from localStorage after hydration to avoid server/client mismatch
   useEffect(() => {
-    const draft = loadDraft(listId);
-    if (draft) {
-      setState((prev) => ({ ...prev, slug: draft.slug, description: draft.description, links: draft.links, loaded: true }));
-    } else {
-      setState((prev) => ({ ...prev, loaded: true }));
-    }
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      const draft = loadDraft(listId);
+      if (draft) {
+        setState((prev) => ({ ...prev, slug: draft.slug, description: draft.description, links: draft.links, loaded: true }));
+      } else {
+        setState((prev) => ({ ...prev, loaded: true }));
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [listId]);
 
   const { slug, description, links, loaded } = state;

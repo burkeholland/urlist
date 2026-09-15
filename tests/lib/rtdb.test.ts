@@ -13,6 +13,7 @@ import {
   isSlugAvailable,
   reserveSlug,
   resolveSlug,
+  updateLinkHealth,
   updateList,
 } from '@/lib/rtdb';
 
@@ -94,14 +95,14 @@ describe('rtdb', () => {
 
   it('resolveSlug returns listId when slug exists and null when not', async () => {
     const db = createMockDb({ slugs: [{ id: 'a~b', slug: 'a~b', listId: 'list-1' }] });
-    vi.mocked(getDb).mockReturnValue(db as any);
+    vi.mocked(getDb).mockReturnValue(db as unknown as ReturnType<typeof getDb>);
     await expect(resolveSlug('a/b')).resolves.toBe('list-1');
     await expect(resolveSlug('missing')).resolves.toBeNull();
   });
 
   it('getLinks queries the links container filtered by listId and ordered by position', async () => {
     const db = createMockDb({ links: [fullLink('a', 0)] });
-    vi.mocked(getDb).mockReturnValue(db as any);
+    vi.mocked(getDb).mockReturnValue(db as unknown as ReturnType<typeof getDb>);
     await getLinks('list-1');
     const linksQuery = db.container.mock.results
       .map((r: any) => r.value.items.query.mock.calls)
@@ -113,14 +114,14 @@ describe('rtdb', () => {
 
   it('isSlugAvailable returns true only when slug is not found', async () => {
     const db = createMockDb({ slugs: [{ id: 'taken', slug: 'taken', listId: 'list-1' }] });
-    vi.mocked(getDb).mockReturnValue(db as any);
+    vi.mocked(getDb).mockReturnValue(db as unknown as ReturnType<typeof getDb>);
     await expect(isSlugAvailable('free')).resolves.toBe(true);
     await expect(isSlugAvailable('taken')).resolves.toBe(false);
   });
 
   it('reserveSlug creates a slug doc and returns false on conflict', async () => {
     const db = createMockDb({ slugs: [{ id: 'taken', slug: 'taken', listId: 'old' }] });
-    vi.mocked(getDb).mockReturnValue(db as any);
+    vi.mocked(getDb).mockReturnValue(db as unknown as ReturnType<typeof getDb>);
     await expect(reserveSlug('new', 'list-1')).resolves.toBe(true);
     expect(db.data.get('slugs')!.get('new')!.listId).toBe('list-1');
     await expect(reserveSlug('taken', 'list-2')).resolves.toBe(false);
@@ -155,20 +156,20 @@ describe('rtdb', () => {
 
   it('getList returns a list without Cosmos id or null', async () => {
     const db = createMockDb({ lists: [{ id: 'list-1', slug: 's', description: '', ownerId: null, createdAt: 1, updatedAt: 2 }] });
-    vi.mocked(getDb).mockReturnValue(db as any);
+    vi.mocked(getDb).mockReturnValue(db as unknown as ReturnType<typeof getDb>);
     expect(await getList('list-1')).toEqual({ slug: 's', description: '', ownerId: null, createdAt: 1, updatedAt: 2 });
     await expect(getList('missing')).resolves.toBeNull();
   });
 
   it('getLinks returns links sorted by pinned then position', async () => {
     const db = createMockDb({ links: [fullLink('a', 0), fullLink('b', 1, true), fullLink('c', 2)] });
-    vi.mocked(getDb).mockReturnValue(db as any);
+    vi.mocked(getDb).mockReturnValue(db as unknown as ReturnType<typeof getDb>);
     expect((await getLinks('list-1')).map((l) => l.id)).toEqual(['b', 'a', 'c']);
   });
 
   it('defaults pinned to false for links created before the pinned field existed', async () => {
     const db = createMockDb({ links: [{ ...fullLink('a', 0), pinned: undefined }] });
-    vi.mocked(getDb).mockReturnValue(db as any);
+    vi.mocked(getDb).mockReturnValue(db as unknown as ReturnType<typeof getDb>);
     const links = await getLinks('list-1');
     expect(links[0].pinned).toBe(false);
   });
@@ -178,7 +179,7 @@ describe('rtdb', () => {
       lists: [{ id: 'list-1', slug: 's', description: '', ownerId: 'u1', createdAt: 1, updatedAt: 2 }],
       links: [fullLink('a', 0)],
     });
-    vi.mocked(getDb).mockReturnValue(db as any);
+    vi.mocked(getDb).mockReturnValue(db as unknown as ReturnType<typeof getDb>);
     const result = await getListWithLinks('list-1');
     expect(result?.listId).toBe('list-1');
     expect(result?.links).toHaveLength(1);
@@ -187,10 +188,12 @@ describe('rtdb', () => {
   it('createList creates list, links, and userList records', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(100);
     const db = createMockDb();
-    vi.mocked(getDb).mockReturnValue(db as any);
+    vi.mocked(getDb).mockReturnValue(db as unknown as ReturnType<typeof getDb>);
     await createList({ listId: 'list-1', slug: 's', description: 'd', ownerId: 'u1', links: [fullLink('a', 0)] });
     expect(db.data.get('lists')!.get('list-1')!.updatedAt).toBe(100);
     expect(db.data.get('links')!.get('a')!.listId).toBe('list-1');
+    expect(db.data.get('links')!.get('a')!.healthStatus).toBe('unchecked');
+    expect(db.data.get('links')!.get('a')!.metadataRefreshStatus).toBe('skipped');
     expect(db.data.get('userLists')!.get('u1_list-1')!.uid).toBe('u1');
   });
 
@@ -205,6 +208,73 @@ describe('rtdb', () => {
     expect(db.data.get('lists')!.get('list-1')!.description).toBe('new');
     expect(db.data.get('links')!.has('remove')).toBe(false);
     expect(db.data.get('links')!.has('add')).toBe(true);
+  });
+
+  it('updateList preserves health state when the URL is unchanged', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(201);
+    const db = createMockDb({
+      lists: [{ id: 'list-1', slug: 's', description: 'old', ownerId: 'u1', createdAt: 1, updatedAt: 2 }],
+      links: [{
+        ...fullLink('keep', 0),
+        healthStatus: 'broken',
+        healthReason: 'http_404',
+        healthCheckedAt: 100,
+        healthFinalUrl: 'https://example.com/keep',
+        healthHttpStatus: 404,
+        healthFailureCount: 2,
+        healthNextCheckAt: 200,
+        metadataRefreshedAt: 100,
+        metadataRefreshStatus: 'failed',
+      }],
+    });
+    vi.mocked(getDb).mockReturnValue(db as unknown as ReturnType<typeof getDb>);
+    await updateList({ listId: 'list-1', links: [{ ...fullLink('keep', 2), ogTitle: 'new title' }] });
+    expect(db.data.get('links')!.get('keep')).toMatchObject({
+      ogTitle: 'new title',
+      healthStatus: 'broken',
+      healthReason: 'http_404',
+      healthFailureCount: 2,
+    });
+  });
+
+  it('updateList resets health state when the owner changes the URL', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(202);
+    const db = createMockDb({
+      lists: [{ id: 'list-1', slug: 's', description: 'old', ownerId: 'u1', createdAt: 1, updatedAt: 2 }],
+      links: [{ ...fullLink('keep', 0), healthStatus: 'broken', healthReason: 'http_404', healthFailureCount: 2 }],
+    });
+    vi.mocked(getDb).mockReturnValue(db as unknown as ReturnType<typeof getDb>);
+    await updateList({
+      listId: 'list-1',
+      links: [{ ...fullLink('keep', 2), url: 'https://example.org/new' }],
+    });
+    expect(db.data.get('links')!.get('keep')).toMatchObject({
+      url: 'https://example.org/new',
+      healthStatus: 'unchecked',
+      healthReason: 'unchecked',
+      healthFailureCount: 0,
+    });
+  });
+
+  it('updateLinkHealth patches health and refreshed metadata fields', async () => {
+    const db = createMockDb({ links: [fullLink('a', 0)] });
+    vi.mocked(getDb).mockReturnValue(db as unknown as ReturnType<typeof getDb>);
+    await updateLinkHealth({
+      listId: 'list-1',
+      linkId: 'a',
+      updates: {
+        healthStatus: 'redirected',
+        healthReason: 'redirect',
+        healthFinalUrl: 'https://example.org/',
+        ogTitle: 'Fresh',
+      },
+    });
+    expect(db.data.get('links')!.get('a')).toMatchObject({
+      healthStatus: 'redirected',
+      healthReason: 'redirect',
+      healthFinalUrl: 'https://example.org/',
+      ogTitle: 'Fresh',
+    });
   });
 
   it('updateList always patches updatedAt and only patches description when provided', async () => {
