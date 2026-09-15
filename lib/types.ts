@@ -12,6 +12,7 @@ export interface LinkRecord {
   url: string;
   position: number;
   pinned: boolean;
+  folder?: string | null;
   ogTitle: string | null;
   ogDescription: string | null;
   ogImage: string | null;
@@ -38,6 +39,7 @@ export interface DraftLink {
   url: string;
   position: number;
   pinned: boolean;
+  folder?: string | null;
   ogTitle: string | null;
   ogDescription: string | null;
   ogImage: string | null;

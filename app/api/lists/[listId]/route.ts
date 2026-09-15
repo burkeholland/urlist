@@ -10,6 +10,7 @@ import {
   MAX_OG_TITLE_LENGTH,
   MAX_OG_DESCRIPTION_LENGTH,
   MAX_OG_SITE_NAME_LENGTH,
+  MAX_FOLDER_LENGTH,
 } from '@/lib/schemas/shared';
 
 export async function GET(
@@ -115,6 +116,7 @@ export async function PATCH(
           url: string;
           position: number;
           pinned: boolean;
+          folder: string | null;
           ogTitle: string | null;
           ogDescription: string | null;
           ogImage: string | null;
@@ -144,6 +146,7 @@ export async function PATCH(
           url: urlResult.url,
           position: link.position,
           pinned: link.pinned,
+          folder: sanitizeText(link.folder, MAX_FOLDER_LENGTH),
           ogTitle: sanitizeText(link.ogTitle, MAX_OG_TITLE_LENGTH),
           ogDescription: sanitizeText(link.ogDescription, MAX_OG_DESCRIPTION_LENGTH),
           ogImage: link.ogImage && isValidHttpUrl(link.ogImage) ? link.ogImage : null,

@@ -17,6 +17,7 @@ export default function MyLinksPage() {
   const [lists, setLists] = useState<ListWithStats[]>([]);
   const [fetching, setFetching] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ListWithStats | null>(null);
 
   useEffect(() => {
@@ -74,6 +75,29 @@ export default function MyLinksPage() {
       alert('Something went wrong.');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleDuplicate = async (e: React.MouseEvent, list: ListWithStats) => {
+    e.stopPropagation();
+    setDuplicatingId(list.listId);
+    try {
+      const res = await fetch(`/api/lists/${list.listId}/duplicate`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error?.message || 'Failed to duplicate list.');
+        return;
+      }
+      router.push(`/app/compose/${data.listId}`);
+    } catch {
+      alert('Something went wrong.');
+    } finally {
+      setDuplicatingId(null);
     }
   };
 
@@ -185,6 +209,17 @@ export default function MyLinksPage() {
                       >
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M18 20V10M12 20V4M6 20v-6"/>
+                        </svg>
+                      </button>
+                      <button
+                        className="icon-btn icon-btn-duplicate"
+                        title="Duplicate"
+                        disabled={duplicatingId === list.listId}
+                        onClick={(e) => handleDuplicate(e, list)}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="8" y="8" width="12" height="12" rx="2"/>
+                          <path d="M4 16V6a2 2 0 0 1 2-2h10"/>
                         </svg>
                       </button>
                       <button
@@ -373,6 +408,7 @@ export default function MyLinksPage() {
         }
         .icon-btn-link:hover { color: var(--link); }
         .icon-btn-analytics:hover { color: var(--accent); }
+        .icon-btn-duplicate:hover { color: var(--success); }
         .icon-btn-delete:hover { color: var(--danger); }
         /* Skeleton */
         .skeleton-tile {

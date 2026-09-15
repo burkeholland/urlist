@@ -429,6 +429,20 @@ textarea.input {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.pub-card-folder {
+  display: inline-block;
+  max-width: 100%;
+  margin-top: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--blue-bg);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .pub-card-desc {
   font-size: 0.8125rem;
   color: var(--text-muted);

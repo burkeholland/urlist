@@ -2,8 +2,10 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
+import { useRouter } from 'next/navigation';
 import { LinkCard } from '@/components/link-card';
 import { NavHeader } from '@/components/nav-header';
+import { useAuth } from '@/hooks/use-auth';
 import type { ListWithLinks, TrackEventPayload } from '@/lib/types';
 
 const QRCodeSVG = dynamic(
@@ -29,8 +31,12 @@ function trackEvent(listId: string, payload: TrackEventPayload) {
 }
 
 export function PublicListClient({ list, slug, justPublished }: PublicListClientProps) {
+  const router = useRouter();
+  const { user, loading: authLoading, signIn } = useAuth();
   const [showBanner, setShowBanner] = useState(justPublished);
   const [view, setView] = useState<'list' | 'qr'>('list');
+  const [duplicating, setDuplicating] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   // null until mounted — avoids encoding a relative URL into the QR code
   const [publicUrl, setPublicUrl] = useState<string | null>(null);
 
@@ -83,6 +89,33 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
     [list.listId],
   );
 
+  const handleDuplicate = async () => {
+    setActionError(null);
+    if (!authLoading && !user) {
+      signIn();
+      return;
+    }
+    setDuplicating(true);
+    try {
+      const res = await fetch(`/api/lists/${list.listId}/duplicate`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setActionError(data.error?.message || 'Could not duplicate this list.');
+        return;
+      }
+      router.push(`/app/compose/${data.listId}`);
+    } catch {
+      setActionError('Could not duplicate this list.');
+    } finally {
+      setDuplicating(false);
+    }
+  };
+
   return (
     <div>
       <NavHeader />
@@ -106,39 +139,56 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
             </div>
           </div>
 
-          <div className="view-toggle" role="group" aria-label="View mode">
+          <div className="pub-actions">
+            <div className="export-actions" aria-label="Export collection">
+              <a className="btn btn-outline" href={`/api/lists/${list.listId}/export?format=json`}>JSON</a>
+              <a className="btn btn-outline" href={`/api/lists/${list.listId}/export?format=csv`}>CSV</a>
+              <a className="btn btn-outline" href={`/api/lists/${list.listId}/export?format=html`}>HTML</a>
+            </div>
             <button
-              aria-pressed={view === 'list'}
-              className={`view-toggle-btn${view === 'list' ? ' active' : ''}`}
-              onClick={() => setView('list')}
+              type="button"
+              className="btn btn-outline"
+              onClick={handleDuplicate}
+              disabled={duplicating || authLoading}
             >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <line x1="8" y1="6" x2="21" y2="6" />
-                <line x1="8" y1="12" x2="21" y2="12" />
-                <line x1="8" y1="18" x2="21" y2="18" />
-                <line x1="3" y1="6" x2="3.01" y2="6" />
-                <line x1="3" y1="12" x2="3.01" y2="12" />
-                <line x1="3" y1="18" x2="3.01" y2="18" />
-              </svg>
-              List
+              {duplicating ? 'Duplicating…' : 'Duplicate'}
             </button>
-            <button
-              aria-pressed={view === 'qr'}
-              className={`view-toggle-btn${view === 'qr' ? ' active' : ''}`}
-              onClick={() => setView('qr')}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <rect x="3" y="3" width="7" height="7" />
-                <rect x="14" y="3" width="7" height="7" />
-                <rect x="3" y="14" width="7" height="7" />
-                <rect x="14" y="14" width="3" height="3" />
-                <line x1="14" y1="20" x2="21" y2="20" />
-                <line x1="21" y1="14" x2="21" y2="17" />
-              </svg>
-              QR
-            </button>
+            <div className="view-toggle" role="group" aria-label="View mode">
+              <button
+                aria-pressed={view === 'list'}
+                className={`view-toggle-btn${view === 'list' ? ' active' : ''}`}
+                onClick={() => setView('list')}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <line x1="8" y1="6" x2="21" y2="6" />
+                  <line x1="8" y1="12" x2="21" y2="12" />
+                  <line x1="8" y1="18" x2="21" y2="18" />
+                  <line x1="3" y1="6" x2="3.01" y2="6" />
+                  <line x1="3" y1="12" x2="3.01" y2="12" />
+                  <line x1="3" y1="18" x2="3.01" y2="18" />
+                </svg>
+                List
+              </button>
+              <button
+                aria-pressed={view === 'qr'}
+                className={`view-toggle-btn${view === 'qr' ? ' active' : ''}`}
+                onClick={() => setView('qr')}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <rect x="3" y="3" width="7" height="7" />
+                  <rect x="14" y="3" width="7" height="7" />
+                  <rect x="3" y="14" width="7" height="7" />
+                  <rect x="14" y="14" width="3" height="3" />
+                  <line x1="14" y1="20" x2="21" y2="20" />
+                  <line x1="21" y1="14" x2="21" y2="17" />
+                </svg>
+                QR
+              </button>
+            </div>
           </div>
         </div>
+
+        {actionError && <p className="validation-message">{actionError}</p>}
 
         <hr className="divider" />
 
@@ -251,6 +301,24 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
           margin-top: 4px;
         }
 
+        .pub-actions {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .export-actions {
+          display: inline-flex;
+          gap: 4px;
+          flex-wrap: wrap;
+        }
+
+        .export-actions :global(.btn) {
+          text-decoration: none;
+        }
+
         .view-toggle-btn {
           display: inline-flex;
           align-items: center;
@@ -285,6 +353,15 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
           display: flex;
           flex-direction: column;
           gap: 6px;
+        }
+
+        @media (max-width: 700px) {
+          .pub-header {
+            flex-direction: column;
+          }
+          .pub-actions {
+            justify-content: flex-start;
+          }
         }
 
         .qr-view {

@@ -28,6 +28,7 @@ export function LinkCard({ link, onDelete, onUpdate, onPin, isPublicView = false
   const hostname = getHostname(link.url);
   const title = link.ogTitle || hostname;
   const description = link.ogDescription;
+  const folder = link.folder;
   const isLoading = 'ogLoading' in link && link.ogLoading;
   const isPinned = link.pinned ?? false;
 
@@ -71,6 +72,7 @@ export function LinkCard({ link, onDelete, onUpdate, onPin, isPublicView = false
             <a href={link.url} target="_blank" rel="noopener noreferrer">{title}</a>
           </div>
           <div className="pub-card-domain">{hostname}</div>
+          {folder && <div className="pub-card-folder">{folder}</div>}
           {description && <div className="pub-card-desc">{description}</div>}
         </div>
         {isPinned && (
@@ -137,6 +139,7 @@ export function LinkCard({ link, onDelete, onUpdate, onPin, isPublicView = false
           >{title}</div>
         )}
         <div className="pub-card-domain">{hostname}</div>
+        {folder && <div className="pub-card-folder">{folder}</div>}
         {editingField === 'description' ? (
           <input
             ref={inputRef}
