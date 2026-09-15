@@ -154,20 +154,27 @@ export function PublicListClient({ list, slug, justPublished }: PublicListClient
                 <LinkCard link={link} isPublicView />
               </div>
             ))}
-            {sectionGroups.map((group) => (
-              <section key={group.section.id} className="pub-section" aria-labelledby={`section-${group.section.id}`}>
-                {showSectionHeadings ? (
-                  <h2 id={`section-${group.section.id}`} className="pub-section-title">{group.section.name}</h2>
-                ) : null}
-                <div className="pub-section-links">
-                  {group.links.map((link) => (
-                    <div key={link.id} onClick={() => handleLinkClick(link.id)}>
-                      <LinkCard link={link} isPublicView />
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ))}
+            {sectionGroups.map((group) => {
+              const headingId = `section-${group.section.id}`;
+              return (
+                <section
+                  key={group.section.id}
+                  className="pub-section"
+                  aria-labelledby={showSectionHeadings ? headingId : undefined}
+                >
+                  {showSectionHeadings ? (
+                    <h2 id={headingId} className="pub-section-title">{group.section.name}</h2>
+                  ) : null}
+                  <div className="pub-section-links">
+                    {group.links.map((link) => (
+                      <div key={link.id} onClick={() => handleLinkClick(link.id)}>
+                        <LinkCard link={link} isPublicView />
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
           </div>
         ) : (
           <div className="qr-view">

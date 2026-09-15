@@ -82,6 +82,20 @@ export async function PATCH(
     }
 
     const { description, updatedAt, links } = parsed.data;
+
+    // Optimistic concurrency check
+    if (list.updatedAt !== updatedAt) {
+      return NextResponse.json(
+        {
+          error: {
+            code: 'CONFLICT',
+            message: 'List was modified since your last fetch. Re-fetch and retry.',
+          },
+        },
+        { status: 409 },
+      );
+    }
+
     const sections = parsed.data.sections === undefined
       ? undefined
       : normalizeSections(parsed.data.sections);
@@ -112,19 +126,6 @@ export async function PATCH(
       );
     }
     const fallbackSectionId = sectionsForValidation[0].id;
-
-    // Optimistic concurrency check
-    if (list.updatedAt !== updatedAt) {
-      return NextResponse.json(
-        {
-          error: {
-            code: 'CONFLICT',
-            message: 'List was modified since your last fetch. Re-fetch and retry.',
-          },
-        },
-        { status: 409 },
-      );
-    }
 
     // Validate description
     if (description !== undefined && description.length > 280) {

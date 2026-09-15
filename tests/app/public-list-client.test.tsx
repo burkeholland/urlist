@@ -79,5 +79,6 @@ describe('PublicListClient', () => {
     );
     expect(legacyHtml).toContain('Alpha Link');
     expect(legacyHtml).not.toContain('<h2 id="section-default"');
+    expect(legacyHtml).not.toContain('aria-labelledby="section-default"');
   });
 });

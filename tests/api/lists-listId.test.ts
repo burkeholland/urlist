@@ -94,6 +94,33 @@ describe('PATCH /api/lists/[listId]', () => {
     expect(res.body.error.message).toMatch(/modified since your last fetch/);
   });
 
+  it('returns 409 for stale section updates before validating current link references', async () => {
+    vi.mocked(getListWithLinks).mockResolvedValue({
+      listId: 'list-1',
+      ...list,
+      sections: [{ id: 'a', name: 'A', position: 0 }, { id: 'b', name: 'B', position: 1 }],
+      links: [{
+        id: 'b-link',
+        url: 'https://example.com',
+        sectionId: 'b',
+        position: 0,
+        pinned: false,
+        ogTitle: null,
+        ogDescription: null,
+        ogImage: null,
+        ogSiteName: null,
+        createdAt: 1,
+      }],
+    });
+    const res = await json(await PATCH(req('PATCH', {
+      updatedAt: 9,
+      sections: [{ id: 'a', name: 'Alpha', position: 0 }],
+    }), ctx));
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('CONFLICT');
+    expect(getListWithLinks).not.toHaveBeenCalled();
+  });
+
   it('returns 400 for invalid URL in links', async () => {
     const res = await json(await PATCH(req('PATCH', { updatedAt: 10, links: [{ url: 'bad url', position: 0 }] }), ctx));
     expect(res.status).toBe(400);

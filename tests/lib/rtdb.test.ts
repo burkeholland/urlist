@@ -256,6 +256,7 @@ describe('rtdb', () => {
     expect(db.data.get('links')!.get('keep')!).toEqual(expect.objectContaining({
       sectionId: 'b',
       ogTitle: 'Old title',
+      createdAt: 1,
     }));
   });
 

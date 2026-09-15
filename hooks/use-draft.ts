@@ -62,7 +62,11 @@ export function parseStoredDraft(value: string): Draft | null {
 
 export function getDraftStoragePayload(draft: Draft): Draft {
   const normalized = normalizeDraft(draft);
-  const cleanLinks = normalized.links.map(({ ogLoading: _, ...rest }) => rest);
+  const cleanLinks = normalized.links.map((link) => {
+    const cleanLink = { ...link };
+    delete cleanLink.ogLoading;
+    return cleanLink;
+  });
   return { ...normalized, links: cleanLinks, savedAt: Date.now() };
 }
 

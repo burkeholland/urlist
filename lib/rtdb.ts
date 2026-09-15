@@ -23,7 +23,8 @@ export async function getList(listId: string): Promise<ListRecord | null> {
     .item(listId, listId)
     .read<ListRecord & { id: string }>();
   if (!resource) return null;
-  const { id: _, ...record } = resource;
+  const record = { ...resource };
+  delete (record as Partial<typeof record>).id;
   return record as ListRecord;
 }
 
@@ -37,10 +38,18 @@ export async function getLinks(listId: string): Promise<LinkWithId[]> {
     })
     .fetchAll();
 
-  const links = resources.map(({ listId: _listId, ...link }) => ({
-    ...link,
+  const links = resources.map((link) => ({
+    id: link.id,
+    url: link.url,
+    sectionId: link.sectionId,
+    position: link.position,
     pinned: link.pinned ?? false,
-  }) as LinkWithId);
+    ogTitle: link.ogTitle,
+    ogDescription: link.ogDescription,
+    ogImage: link.ogImage,
+    ogSiteName: link.ogSiteName,
+    createdAt: link.createdAt,
+  }));
 
   // Sort pinned-first in app layer to safely handle existing docs without the field
   return links.sort((a, b) => Number(b.pinned) - Number(a.pinned));
@@ -214,13 +223,14 @@ export async function updateList(params: {
     const sectionsForLinks = sections ?? normalizeSections((await getList(listId))?.sections);
 
     const { resources: existing } = await linkContainer.items
-      .query<{ id: string; listId: string }>({
-        query: 'SELECT c.id, c.listId FROM c WHERE c.listId = @listId',
+      .query<{ id: string; listId: string; createdAt?: number }>({
+        query: 'SELECT c.id, c.listId, c.createdAt FROM c WHERE c.listId = @listId',
         parameters: [{ name: '@listId', value: listId }],
       })
       .fetchAll();
 
     const newIds = new Set(links.map((l) => l.id));
+    const existingCreatedAtById = new Map(existing.map((link) => [link.id, link.createdAt]));
 
     // Create new/updated links first (safe — won't lose data on failure)
     await Promise.all(
@@ -236,7 +246,7 @@ export async function updateList(params: {
           ogDescription: link.ogDescription,
           ogImage: link.ogImage,
           ogSiteName: link.ogSiteName,
-          createdAt: now,
+          createdAt: existingCreatedAtById.get(link.id) ?? now,
         }),
       ),
     );
