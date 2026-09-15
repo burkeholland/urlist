@@ -87,6 +87,15 @@ const fullLink = (id: string, position: number, pinned = false) => ({
   createdAt: 1,
 });
 
+const defaultBranding = {
+  publicTitle: null,
+  socialTitle: null,
+  socialDescription: null,
+  coverImage: null,
+  socialImage: null,
+  appearance: { theme: 'default', accent: 'coral', layout: 'comfortable' as const },
+} as const;
+
 describe('rtdb', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -156,7 +165,7 @@ describe('rtdb', () => {
   it('getList returns a list without Cosmos id or null', async () => {
     const db = createMockDb({ lists: [{ id: 'list-1', slug: 's', description: '', ownerId: null, createdAt: 1, updatedAt: 2 }] });
     vi.mocked(getDb).mockReturnValue(db as any);
-    expect(await getList('list-1')).toEqual({ slug: 's', description: '', ownerId: null, createdAt: 1, updatedAt: 2 });
+    expect(await getList('list-1')).toEqual({ slug: 's', description: '', branding: defaultBranding, ownerId: null, createdAt: 1, updatedAt: 2 });
     await expect(getList('missing')).resolves.toBeNull();
   });
 
@@ -182,14 +191,16 @@ describe('rtdb', () => {
     const result = await getListWithLinks('list-1');
     expect(result?.listId).toBe('list-1');
     expect(result?.links).toHaveLength(1);
+    expect(result?.branding).toEqual(defaultBranding);
   });
 
   it('createList creates list, links, and userList records', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(100);
     const db = createMockDb();
     vi.mocked(getDb).mockReturnValue(db as any);
-    await createList({ listId: 'list-1', slug: 's', description: 'd', ownerId: 'u1', links: [fullLink('a', 0)] });
+    await createList({ listId: 'list-1', slug: 's', description: 'd', branding: defaultBranding, ownerId: 'u1', links: [fullLink('a', 0)] });
     expect(db.data.get('lists')!.get('list-1')!.updatedAt).toBe(100);
+    expect(db.data.get('lists')!.get('list-1')!.branding).toEqual(defaultBranding);
     expect(db.data.get('links')!.get('a')!.listId).toBe('list-1');
     expect(db.data.get('userLists')!.get('u1_list-1')!.uid).toBe('u1');
   });
@@ -201,8 +212,9 @@ describe('rtdb', () => {
       links: [fullLink('keep', 0), fullLink('remove', 1)],
     });
     vi.mocked(getDb).mockReturnValue(db as any);
-    await expect(updateList({ listId: 'list-1', description: 'new', links: [fullLink('keep', 2), fullLink('add', 3)] })).resolves.toBe(200);
+    await expect(updateList({ listId: 'list-1', description: 'new', branding: defaultBranding, links: [fullLink('keep', 2), fullLink('add', 3)] })).resolves.toBe(200);
     expect(db.data.get('lists')!.get('list-1')!.description).toBe('new');
+    expect(db.data.get('lists')!.get('list-1')!.branding).toEqual(defaultBranding);
     expect(db.data.get('links')!.has('remove')).toBe(false);
     expect(db.data.get('links')!.has('add')).toBe(true);
   });
@@ -341,7 +353,7 @@ describe('rtdb', () => {
   it('createList skips userList creation for anonymous owners', async () => {
     const db = createMockDb();
     vi.mocked(getDb).mockReturnValue(db as any);
-    await createList({ listId: 'list-1', slug: 's', description: 'd', ownerId: null, links: [] });
+    await createList({ listId: 'list-1', slug: 's', description: 'd', branding: defaultBranding, ownerId: null, links: [] });
     expect(db.data.has('userLists')).toBe(false);
     expect(db.data.get('lists')!.get('list-1')!.ownerId).toBeNull();
   });

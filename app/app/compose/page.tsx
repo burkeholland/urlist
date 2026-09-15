@@ -7,6 +7,8 @@ import { SlugInput } from '@/components/slug-input';
 import { UrlInput } from '@/components/url-input';
 import { SortableLinkList } from '@/components/sortable-link-list';
 import { PublishButton } from '@/components/publish-button';
+import { ListBrandingEditor } from '@/components/list-branding-editor';
+import { ListPreview } from '@/components/list-preview';
 import { useDraft } from '@/hooks/use-draft';
 import { useDebounce } from '@/hooks/use-debounce';
 import { validateSlugFormat } from '@/lib/slug';
@@ -22,10 +24,12 @@ function ComposeContent() {
     setSlug,
     description,
     setDescription,
+    branding,
     links,
     loaded,
     addLink,
     updateLink,
+    updateBranding,
     removeLink,
     reorderLinks,
     pinLink,
@@ -134,6 +138,14 @@ function ComposeContent() {
         body: JSON.stringify({
           slug: slug || undefined,
           description,
+          branding: {
+            publicTitle: branding.publicTitle || null,
+            socialTitle: branding.socialTitle || null,
+            socialDescription: branding.socialDescription || null,
+            coverImageUrl: branding.coverImageUrl || null,
+            socialImageUrl: branding.socialImageUrl || null,
+            appearance: branding.appearance,
+          },
           links: links.map((l, i) => ({
             url: l.url,
             position: i,
@@ -246,6 +258,14 @@ function ComposeContent() {
 
       <main style={{ maxWidth: '860px', margin: '0 auto', padding: '28px 16px 48px' }}>
         <div className="page">
+          <ListBrandingEditor branding={branding} onChange={updateBranding} />
+          <ListPreview
+            slug={slug}
+            description={description}
+            branding={branding}
+            links={links}
+          />
+
           <UrlInput
             onSubmit={handleAddUrl}
             placeholder="https://example.com"

@@ -11,6 +11,7 @@ import { reserveSlug, cleanupFailedPublish, createList, getUserListIds, getLists
 import { getListAnalyticsSummary } from '@/lib/analytics';
 import { checkRateLimit, getClientIp, RATE_LIMITS } from '@/lib/rate-limiter';
 import { log } from '@/lib/logger';
+import { BrandingValidationError, sanitizeBrandingInput } from '@/lib/list-branding-server';
 import {
   CreateListSchema,
   sanitizeText,
@@ -188,12 +189,31 @@ export async function POST(request: NextRequest) {
     ogSiteName: sanitizeText(link.ogSiteName, MAX_OG_SITE_NAME_LENGTH),
   }));
 
+  let branding;
+  try {
+    branding = await sanitizeBrandingInput(parsed.data.branding);
+  } catch (error) {
+    if (error instanceof BrandingValidationError) {
+      return NextResponse.json(
+        {
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+        },
+        { status: 400 },
+      );
+    }
+    throw error;
+  }
+
   // Write to database — clean up all artifacts if createList fails
   try {
     await createList({
       listId,
       slug,
       description: description.slice(0, 280),
+      branding,
       ownerId: authResult.uid,
       links: sanitizedLinks,
     });

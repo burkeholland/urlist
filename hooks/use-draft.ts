@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { z } from 'zod';
-import type { Draft, DraftLink } from '@/lib/types';
+import { DEFAULT_DRAFT_BRANDING, normalizeDraftBranding } from '@/lib/list-branding';
+import type { Draft, DraftBranding, DraftLink } from '@/lib/types';
 
 const DRAFT_KEY = 'urlist-draft';
 const DRAFT_STALENESS_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -23,6 +24,18 @@ const DraftLinkSchema = z.object({
 const DraftSchema = z.object({
   slug: z.string(),
   description: z.string(),
+  branding: z.object({
+    publicTitle: z.string().optional().default(''),
+    socialTitle: z.string().optional().default(''),
+    socialDescription: z.string().optional().default(''),
+    coverImageUrl: z.string().optional().default(''),
+    socialImageUrl: z.string().optional().default(''),
+    appearance: z.object({
+      theme: z.enum(['default', 'sunset', 'ocean', 'midnight']).optional().default('default'),
+      accent: z.enum(['coral', 'teal', 'violet', 'amber']).optional().default('coral'),
+      layout: z.enum(['comfortable', 'compact', 'cards']).optional().default('comfortable'),
+    }).optional().default(DEFAULT_DRAFT_BRANDING.appearance),
+  }).optional().default(DEFAULT_DRAFT_BRANDING),
   links: z.array(DraftLinkSchema),
   savedAt: z.number(),
 });
@@ -63,7 +76,11 @@ function saveDraft(draft: Draft, listId?: string): boolean {
   try {
     const key = getDraftKey(listId);
     // Strip transient ogLoading flag before persisting
-    const cleanLinks = draft.links.map(({ ogLoading: _, ...rest }) => rest);
+    const cleanLinks = draft.links.map((link) => {
+      const cleanLink = { ...link };
+      delete cleanLink.ogLoading;
+      return cleanLink;
+    });
     localStorage.setItem(key, JSON.stringify({ ...draft, links: cleanLinks, savedAt: Date.now() }));
     return true;
   } catch {
@@ -83,9 +100,10 @@ function clearDraft(listId?: string): void {
 }
 
 export function useDraft(listId?: string) {
-  const [state, setState] = useState<{ slug: string; description: string; links: DraftLink[]; loaded: boolean }>({
+  const [state, setState] = useState<{ slug: string; description: string; branding: DraftBranding; links: DraftLink[]; loaded: boolean }>({
     slug: '',
     description: '',
+    branding: DEFAULT_DRAFT_BRANDING,
     links: [],
     loaded: false,
   });
@@ -95,14 +113,23 @@ export function useDraft(listId?: string) {
   // Load draft from localStorage after hydration to avoid server/client mismatch
   useEffect(() => {
     const draft = loadDraft(listId);
-    if (draft) {
-      setState((prev) => ({ ...prev, slug: draft.slug, description: draft.description, links: draft.links, loaded: true }));
-    } else {
-      setState((prev) => ({ ...prev, loaded: true }));
-    }
+    queueMicrotask(() => {
+      if (draft) {
+        setState((prev) => ({
+          ...prev,
+          slug: draft.slug,
+          description: draft.description,
+          branding: normalizeDraftBranding(draft.branding),
+          links: draft.links,
+          loaded: true,
+        }));
+      } else {
+        setState((prev) => ({ ...prev, loaded: true }));
+      }
+    });
   }, [listId]);
 
-  const { slug, description, links, loaded } = state;
+  const { slug, description, branding, links, loaded } = state;
 
   const setSlug = useCallback((val: string | ((prev: string) => string)) => {
     setState((prev) => ({ ...prev, slug: typeof val === 'function' ? val(prev.slug) : val }));
@@ -110,6 +137,13 @@ export function useDraft(listId?: string) {
 
   const setDescription = useCallback((val: string | ((prev: string) => string)) => {
     setState((prev) => ({ ...prev, description: typeof val === 'function' ? val(prev.description) : val }));
+  }, []);
+
+  const setBranding = useCallback((val: DraftBranding | ((prev: DraftBranding) => DraftBranding)) => {
+    setState((prev) => ({
+      ...prev,
+      branding: normalizeDraftBranding(typeof val === 'function' ? val(prev.branding) : val),
+    }));
   }, []);
 
   const setLinks = useCallback((val: DraftLink[] | ((prev: DraftLink[]) => DraftLink[])) => {
@@ -125,7 +159,7 @@ export function useDraft(listId?: string) {
     }
 
     saveTimerRef.current = setTimeout(() => {
-      const ok = saveDraft({ slug, description, links, savedAt: Date.now() }, listId);
+      const ok = saveDraft({ slug, description, branding, links, savedAt: Date.now() }, listId);
       setSaveError(!ok);
     }, SAVE_DEBOUNCE_MS);
 
@@ -134,14 +168,15 @@ export function useDraft(listId?: string) {
         clearTimeout(saveTimerRef.current);
       }
     };
-  }, [slug, description, links, listId, loaded]);
+  }, [slug, description, branding, links, listId, loaded]);
 
   const clearCurrentDraft = useCallback(() => {
     clearDraft(listId);
     setSlug('');
     setDescription('');
+    setBranding(DEFAULT_DRAFT_BRANDING);
     setLinks([]);
-  }, [listId, setSlug, setDescription, setLinks]);
+  }, [listId, setSlug, setDescription, setBranding, setLinks]);
 
   const addLink = useCallback((link: DraftLink) => {
     setLinks((prev) => [...prev, { ...link, position: prev.length, pinned: false }]);
@@ -165,11 +200,18 @@ export function useDraft(listId?: string) {
     );
   }, [setLinks]);
 
+  const updateBranding = useCallback((updates: Partial<DraftBranding>) => {
+    setBranding((prev) => normalizeDraftBranding({ ...prev, ...updates }));
+  }, [setBranding]);
+
   return {
     slug,
     setSlug,
     description,
     setDescription,
+    branding,
+    setBranding,
+    updateBranding,
     links,
     setLinks,
     loaded,

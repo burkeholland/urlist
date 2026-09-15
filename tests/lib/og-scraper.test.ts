@@ -38,6 +38,7 @@ describe('scrapeOgMetadata', () => {
     const ogs = await import('open-graph-scraper');
 
     vi.clearAllMocks();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 405 })));
     (dns.default.lookup as ReturnType<typeof vi.fn>).mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
     (ogs.default as ReturnType<typeof vi.fn>).mockResolvedValue(defaultOgResult);
   });
@@ -231,6 +232,45 @@ describe('scrapeOgMetadata', () => {
     expect(result.ogTitle).toBeNull();
   });
 
+  it('follows public redirects but blocks redirects to private hosts', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === 'https://redirect.example') {
+          return new Response(null, {
+            status: 302,
+            headers: { location: 'https://final.example/page' },
+          });
+        }
+
+        if (url === 'https://public-to-private.example') {
+          return new Response(null, {
+            status: 302,
+            headers: { location: 'http://10.0.0.1/admin' },
+          });
+        }
+
+        return new Response(null, { status: 405 });
+      }),
+    );
+
+    const redirected = await scrapeOgMetadata('https://redirect.example');
+    expect(redirected.url).toBe('https://final.example/page');
+
+    const ogs = await import('open-graph-scraper');
+    expect(ogs.default).toHaveBeenCalledWith({
+      url: 'https://final.example/page',
+      timeout: 5,
+      fetchOptions: {
+        redirect: 'error',
+      },
+    });
+
+    const blocked = await scrapeOgMetadata('https://public-to-private.example');
+    expect(blocked.ogTitle).toBeNull();
+  });
+
   it('returns null ogImage when result has no image array', async () => {
     const ogs = await import('open-graph-scraper');
     (ogs.default as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
@@ -252,7 +292,13 @@ describe('scrapeOgMetadata', () => {
   it('passes a short timeout to the scraper', async () => {
     const ogs = await import('open-graph-scraper');
     await scrapeOgMetadata('https://example.com');
-    expect(ogs.default).toHaveBeenCalledWith({ url: 'https://example.com', timeout: 5 });
+    expect(ogs.default).toHaveBeenCalledWith({
+      url: 'https://example.com',
+      timeout: 5,
+      fetchOptions: {
+        redirect: 'error',
+      },
+    });
   });
 
   it('logs DNS failure errors when scraping fails after a failed lookup', async () => {
@@ -261,7 +307,7 @@ describe('scrapeOgMetadata', () => {
     await scrapeOgMetadata('https://fail.example');
     const { log } = await import('@/lib/logger');
     expect(log).toHaveBeenCalledWith(expect.objectContaining({
-      data: { error: 'Error: boom' },
+      data: { error: 'boom' },
     }));
   });
 });

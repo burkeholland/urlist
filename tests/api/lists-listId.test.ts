@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { DELETE, GET, PATCH } from '@/app/api/lists/[listId]/route';
 import { AuthError, requireAuth, verifyAuth } from '@/lib/auth';
+import { sanitizeBrandingInput } from '@/lib/list-branding-server';
 import { deleteList, getList, getListWithLinks, updateList } from '@/lib/rtdb';
 
 vi.mock('@/lib/auth', () => ({
@@ -17,6 +18,16 @@ vi.mock('@/lib/auth', () => ({
   },
 }));
 vi.mock('@/lib/rtdb', () => ({ getList: vi.fn(), getListWithLinks: vi.fn(), updateList: vi.fn(), deleteList: vi.fn() }));
+vi.mock('@/lib/list-branding-server', () => ({
+  sanitizeBrandingInput: vi.fn(),
+  BrandingValidationError: class BrandingValidationError extends Error {
+    code: string;
+    constructor(code: string, message: string) {
+      super(message);
+      this.code = code;
+    }
+  },
+}));
 vi.mock('@/lib/logger', () => ({ log: vi.fn() }));
 
 const ctx = { params: Promise.resolve({ listId: 'list-1' }) };
@@ -25,7 +36,15 @@ const req = (method: string, body?: unknown) => new NextRequest('https://urlist.
   method,
   body: body === undefined ? undefined : JSON.stringify(body),
 });
-const list = { slug: 's', description: '', ownerId: 'u1', createdAt: 1, updatedAt: 10 };
+const defaultBranding = {
+  publicTitle: null,
+  socialTitle: null,
+  socialDescription: null,
+  coverImage: null,
+  socialImage: null,
+  appearance: { theme: 'default', accent: 'coral', layout: 'comfortable' },
+} as const;
+const list = { slug: 's', description: '', branding: defaultBranding, ownerId: 'u1', createdAt: 1, updatedAt: 10 };
 
 describe('GET /api/lists/[listId]', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -53,6 +72,7 @@ describe('PATCH /api/lists/[listId]', () => {
     vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u1' } as any);
     vi.mocked(getList).mockResolvedValue(list);
     vi.mocked(updateList).mockResolvedValue(20);
+    vi.mocked(sanitizeBrandingInput).mockResolvedValue(defaultBranding);
   });
 
   it('returns 401 when not authenticated', async () => {
@@ -121,7 +141,7 @@ describe('PATCH /api/lists/[listId]', () => {
       level: 'info',
       message: 'List updated',
       service: 'api-lists',
-      data: { listId: 'list-1', hasDescriptionChange: true, hasLinksChange: true },
+      data: { listId: 'list-1', hasDescriptionChange: true, hasBrandingChange: false, hasLinksChange: true },
     }));
   });
 
@@ -129,7 +149,7 @@ describe('PATCH /api/lists/[listId]', () => {
     const { log } = await import('@/lib/logger');
     await json(await PATCH(req('PATCH', { updatedAt: 10 }), ctx));
     expect(log).toHaveBeenCalledWith(expect.objectContaining({
-      data: { listId: 'list-1', hasDescriptionChange: false, hasLinksChange: false },
+      data: { listId: 'list-1', hasDescriptionChange: false, hasBrandingChange: false, hasLinksChange: false },
     }));
   });
 
@@ -198,6 +218,60 @@ describe('PATCH /api/lists/[listId]', () => {
     expect(updateList).toHaveBeenCalledWith(expect.objectContaining({
       links: [expect.objectContaining({ ogImage: 'https://cdn.example.com/img.png' })],
     }));
+  });
+
+  it('passes sanitized branding to updateList', async () => {
+    const branding = {
+      ...defaultBranding,
+      publicTitle: 'My list',
+    };
+    vi.mocked(sanitizeBrandingInput).mockResolvedValueOnce(branding);
+    const res = await json(await PATCH(req('PATCH', {
+      updatedAt: 10,
+      branding: { publicTitle: 'My list' },
+    }), ctx));
+    expect(res.status).toBe(200);
+    expect(updateList).toHaveBeenCalledWith(expect.objectContaining({ branding }));
+  });
+
+  it('merges partial branding updates with existing saved values', async () => {
+    vi.mocked(getList).mockResolvedValueOnce({
+      ...list,
+      branding: {
+        ...defaultBranding,
+        socialTitle: 'Existing social title',
+        coverImage: {
+          url: 'https://cdn.example.com/cover.png',
+          contentType: 'image/png',
+          width: 1200,
+          height: 630,
+          sizeBytes: 1024,
+        },
+      },
+    });
+    await json(await PATCH(req('PATCH', {
+      updatedAt: 10,
+      branding: { publicTitle: 'Updated title' },
+    }), ctx));
+    expect(sanitizeBrandingInput).toHaveBeenCalledWith(expect.objectContaining({
+      publicTitle: 'Updated title',
+      socialTitle: 'Existing social title',
+      coverImageUrl: 'https://cdn.example.com/cover.png',
+    }));
+  });
+
+  it('returns 400 when branding validation fails', async () => {
+    const { BrandingValidationError } = await import('@/lib/list-branding-server');
+    vi.mocked(sanitizeBrandingInput).mockRejectedValueOnce(
+      new BrandingValidationError('INVALID_SOCIAL_IMAGE', 'Could not determine image dimensions.'),
+    );
+    const res = await json(await PATCH(req('PATCH', {
+      updatedAt: 10,
+      branding: { socialImageUrl: 'https://cdn.example.com/social.png' },
+    }), ctx));
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('INVALID_SOCIAL_IMAGE');
+    expect(res.body.error.message).toBe('Could not determine image dimensions.');
   });
 
   it('rethrows non-auth errors', async () => {

@@ -1,7 +1,10 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { unstable_noStore as noStore } from 'next/cache';
+import { headers } from 'next/headers';
 import { getListWithLinks, resolveSlug } from '@/lib/rtdb';
+import { buildListPageMetadata } from '@/lib/list-metadata';
+import { getRequestOrigin } from '@/lib/site-url';
 import { PublicListClient } from './client';
 
 // Force dynamic rendering (no caching)
@@ -28,15 +31,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     return { title: 'List Not Found — The Urlist' };
   }
 
-  return {
-    title: `${slug} — The Urlist`,
-    description: list.description || `A curated list of ${list.links.length} links`,
-    openGraph: {
-      title: `${slug} — The Urlist`,
-      description: list.description || `A curated list of ${list.links.length} links`,
-      url: `/${slug}`,
-    },
-  };
+  const headerStore = await headers();
+  return buildListPageMetadata(list, slug, getRequestOrigin(headerStore));
 }
 
 export default async function PublicListPage({ params, searchParams }: PageProps) {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import type { DraftLink, LinkWithId } from '@/lib/types';
+import type { DraftLink, LinkWithId, ListLayoutPreset } from '@/lib/types';
 import { LinkCardPlaceholder } from './link-card-placeholder';
 
 interface LinkCardProps {
@@ -10,6 +10,7 @@ interface LinkCardProps {
   onUpdate?: (id: string, updates: Partial<DraftLink>) => void;
   onPin?: (id: string) => void;
   isPublicView?: boolean;
+  layout?: ListLayoutPreset;
 }
 
 function getHostname(url: string): string {
@@ -20,7 +21,14 @@ function getHostname(url: string): string {
   }
 }
 
-export function LinkCard({ link, onDelete, onUpdate, onPin, isPublicView = false }: LinkCardProps) {
+export function LinkCard({
+  link,
+  onDelete,
+  onUpdate,
+  onPin,
+  isPublicView = false,
+  layout = 'comfortable',
+}: LinkCardProps) {
   const [imgError, setImgError] = useState(false);
   const [editingField, setEditingField] = useState<'title' | 'description' | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -30,6 +38,7 @@ export function LinkCard({ link, onDelete, onUpdate, onPin, isPublicView = false
   const description = link.ogDescription;
   const isLoading = 'ogLoading' in link && link.ogLoading;
   const isPinned = link.pinned ?? false;
+  const publicLayoutClass = `pub-card pub-card--${layout}${isPinned ? ' pub-card--pinned' : ''}`;
 
   useEffect(() => {
     if (editingField && inputRef.current) {
@@ -57,7 +66,7 @@ export function LinkCard({ link, onDelete, onUpdate, onPin, isPublicView = false
 
   if (isPublicView) {
     return (
-      <div className={isPinned ? 'pub-card pub-card--pinned' : 'pub-card'}>
+      <div className={publicLayoutClass}>
         <div className="pub-card-img">
           {link.ogImage && !imgError ? (
             /* eslint-disable-next-line @next/next/no-img-element */
