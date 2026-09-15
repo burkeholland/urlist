@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { nanoid } from 'nanoid';
 import { NavHeader } from '@/components/nav-header';
 import { useAuth } from '@/hooks/use-auth';
-import { normalizeUrl } from '@/lib/url';
+import { normalizeCapturedUrl } from '@/lib/url';
 
 interface OwnedList {
   listId: string;
@@ -78,7 +78,7 @@ export default function CapturePage() {
   const hydratedRef = useRef(false);
 
   const selectedList = lists.find((list) => list.listId === selectedListId) ?? null;
-  const normalized = useMemo(() => normalizeUrl(url), [url]);
+  const normalized = useMemo(() => normalizeCapturedUrl(url), [url]);
   const bookmarkletHref = useMemo(() => {
     if (typeof window === 'undefined') {
       return '#';

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { AuthError, requireAuth, verifyAuth } from '@/lib/auth';
 import { getDb } from '@/lib/cosmos';
 import { getLinks } from '@/lib/rtdb';
-import { normalizeUrl, isValidHttpUrl } from '@/lib/url';
+import { normalizeCapturedUrl, isValidHttpUrl } from '@/lib/url';
 import { generateLinkId } from '@/lib/slug';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limiter';
 import { log } from '@/lib/logger';
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const normalized = normalizeUrl(parsed.data.url);
+    const normalized = normalizeCapturedUrl(parsed.data.url);
     if (!normalized.valid) {
       return NextResponse.json(
         {
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { _etag, id: _id, ...list } = resource;
+    const { _etag, ...list } = resource;
 
     if (list.ownerId !== authResult.uid) {
       return NextResponse.json(

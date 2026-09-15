@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeUrl, isValidHttpUrl } from '@/lib/url';
+import { normalizeCapturedUrl, normalizeUrl, isValidHttpUrl } from '@/lib/url';
 
 describe('normalizeUrl', () => {
   it('accepts valid https URL', () => {
@@ -177,5 +177,31 @@ describe('isValidHttpUrl', () => {
 
   it('returns false for javascript:', () => {
     expect(isValidHttpUrl('javascript:void(0)')).toBe(false);
+  });
+});
+
+describe('normalizeCapturedUrl', () => {
+  it('strips fragments before capture', () => {
+    const result = normalizeCapturedUrl('https://example.com/path?q=1#access_token=secret');
+    expect(result.valid).toBe(true);
+    expect(result.url).toBe('https://example.com/path?q=1');
+  });
+
+  it('rejects URLs with embedded credentials', () => {
+    const result = normalizeCapturedUrl('https://user:pass@example.com/private');
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe('URLs with embedded credentials are not allowed.');
+  });
+
+  it('rejects URLs with sensitive query parameters', () => {
+    const result = normalizeCapturedUrl('https://example.com/reset?token=secret');
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe('URLs with sensitive tokens or signed parameters cannot be quick-captured.');
+  });
+
+  it('rejects OAuth callback URLs with authorization codes', () => {
+    const result = normalizeCapturedUrl('https://example.com/callback?code=abc123&state=state-1');
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe('URLs with sensitive tokens or signed parameters cannot be quick-captured.');
   });
 });

@@ -31,6 +31,30 @@ describe('capture share target staging', () => {
     expect(cookie).toContain('Max-Age=600');
   });
 
+  it('strips URL fragments before staging capture state', async () => {
+    const formData = new FormData();
+    formData.set('url', 'https://example.com/article?from=feed#access_token=secret');
+
+    const stage = await postShareTarget(
+      new NextRequest('https://urlist.test/api/capture/share-target', {
+        method: 'POST',
+        body: formData,
+      }),
+    );
+
+    const cookie = stage.headers.getSetCookie().find((value) => value.startsWith('capture_stage='))!;
+    const cookieValue = cookie.split(';')[0].split('=')[1];
+
+    const staged = await getStaged(
+      new NextRequest('https://urlist.test/api/capture/staged', {
+        headers: { Cookie: `capture_stage=${cookieValue}` },
+      }),
+    );
+
+    const body = await staged.json();
+    expect(body.capture.url).toBe('https://example.com/article?from=feed');
+  });
+
   it('falls back to the text field when a browser only shares text', async () => {
     const formData = new FormData();
     formData.set('text', 'https://example.com/from-text');
@@ -67,5 +91,21 @@ describe('capture share target staging', () => {
 
     expect(res.status).toBe(303);
     expect(res.headers.get('Location')).toContain('/app/capture?error=invalid_capture');
+  });
+
+  it('rejects sensitive query parameters instead of staging them', async () => {
+    const formData = new FormData();
+    formData.set('url', 'https://example.com/reset?token=secret');
+
+    const res = await postShareTarget(
+      new NextRequest('https://urlist.test/api/capture/share-target', {
+        method: 'POST',
+        body: formData,
+      }),
+    );
+
+    expect(res.status).toBe(303);
+    expect(res.headers.get('Location')).toContain('/app/capture?error=invalid_capture');
+    expect(res.headers.getSetCookie().find((value) => value.startsWith('capture_stage='))).toContain('Max-Age=0');
   });
 });

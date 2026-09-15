@@ -129,6 +129,12 @@ describe('POST /api/capture', () => {
     expect((await res.json()).error.code).toBe('INVALID_URL');
   });
 
+  it('returns 400 for tokenized or signed URLs that should not be captured', async () => {
+    const res = await POST(req({ listId: 'list-1', updatedAt: 10, url: 'https://example.com/reset?token=secret' }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe('INVALID_URL');
+  });
+
   it('returns 404 when the list does not exist', async () => {
     listRead.mockResolvedValue({ resource: null });
     const res = await POST(req({ listId: 'list-1', updatedAt: 10, url: 'https://example.com' }));

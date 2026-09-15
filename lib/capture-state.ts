@@ -1,6 +1,7 @@
 import { jwtVerify, SignJWT } from 'jose';
 import { z } from 'zod';
 import { getAuthSecret } from '@/lib/auth';
+import { normalizeCapturedUrl } from '@/lib/url';
 import {
   MAX_OG_DESCRIPTION_LENGTH,
   MAX_OG_TITLE_LENGTH,
@@ -37,6 +38,11 @@ export function buildStagedCapturePayload(params: {
     return null;
   }
 
+  const normalizedUrl = normalizeCapturedUrl(urlCandidate);
+  if (!normalizedUrl.valid) {
+    return null;
+  }
+
   const textCandidate = trimString(params.text);
   const normalizedText = sanitizeText(
     textCandidate && textCandidate !== urlCandidate ? textCandidate : null,
@@ -44,7 +50,7 @@ export function buildStagedCapturePayload(params: {
   );
 
   const payload = {
-    url: urlCandidate.slice(0, MAX_URL_LENGTH),
+    url: normalizedUrl.url.slice(0, MAX_URL_LENGTH),
     title: sanitizeText(trimString(params.title), MAX_OG_TITLE_LENGTH),
     text: normalizedText,
     source: params.source === 'bookmarklet' ? 'bookmarklet' : 'share-target',
