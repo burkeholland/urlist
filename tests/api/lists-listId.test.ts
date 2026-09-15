@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { DELETE, GET, PATCH } from '@/app/api/lists/[listId]/route';
 import { AuthError, requireAuth, verifyAuth } from '@/lib/auth';
@@ -26,6 +26,25 @@ const req = (method: string, body?: unknown) => new NextRequest('https://urlist.
   body: body === undefined ? undefined : JSON.stringify(body),
 });
 const list = { slug: 's', description: '', ownerId: 'u1', createdAt: 1, updatedAt: 10 };
+const link = (id: string, overrides = {}) => ({
+  id,
+  url: `https://example.com/${id}`,
+  position: 0,
+  pinned: false,
+  visibleFrom: null,
+  visibleUntil: null,
+  visibleTimezone: null,
+  ogTitle: null,
+  ogDescription: null,
+  ogImage: null,
+  ogSiteName: null,
+  createdAt: 1,
+  ...overrides,
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('GET /api/lists/[listId]', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -43,6 +62,41 @@ describe('GET /api/lists/[listId]', () => {
     const res = await json(await GET(req('GET'), ctx));
     expect(res.status).toBe(200);
     expect(res.body.listId).toBe('list-1');
+  });
+
+  it('filters upcoming and expired links from anonymous public payloads', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T12:00:00.000Z'));
+    vi.mocked(getListWithLinks).mockResolvedValue({
+      listId: 'list-1',
+      ...list,
+      links: [
+        link('active'),
+        link('upcoming', { visibleFrom: Date.parse('2026-01-01T12:01:00.000Z'), visibleTimezone: 'UTC' }),
+        link('expired', { visibleUntil: Date.parse('2026-01-01T12:00:00.000Z'), visibleTimezone: 'UTC' }),
+      ],
+    });
+    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: false, uid: null } as any);
+    const res = await json(await GET(req('GET'), ctx));
+    expect(res.status).toBe(200);
+    expect(res.body.links.map((l: { id: string }) => l.id)).toEqual(['active']);
+  });
+
+  it('returns all scheduled states to the owner payload', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T12:00:00.000Z'));
+    vi.mocked(getListWithLinks).mockResolvedValue({
+      listId: 'list-1',
+      ...list,
+      links: [
+        link('active'),
+        link('upcoming', { visibleFrom: Date.parse('2026-01-01T12:01:00.000Z'), visibleTimezone: 'UTC' }),
+      ],
+    });
+    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u1' } as any);
+    const res = await json(await GET(req('GET'), ctx));
+    expect(res.status).toBe(200);
+    expect(res.body.links.map((l: { id: string }) => l.id)).toEqual(['active', 'upcoming']);
   });
 });
 
@@ -198,6 +252,42 @@ describe('PATCH /api/lists/[listId]', () => {
     expect(updateList).toHaveBeenCalledWith(expect.objectContaining({
       links: [expect.objectContaining({ ogImage: 'https://cdn.example.com/img.png' })],
     }));
+  });
+
+  it('passes normalized scheduled link fields to updateList', async () => {
+    const visibleFrom = Date.parse('2026-01-01T15:00:00.000Z');
+    const res = await json(await PATCH(req('PATCH', {
+      updatedAt: 10,
+      links: [{
+        id: 'a',
+        url: 'example.com',
+        position: 0,
+        visibleFrom,
+        visibleUntil: null,
+        visibleTimezone: 'America/Chicago',
+      }],
+    }), ctx));
+    expect(res.status).toBe(200);
+    expect(updateList).toHaveBeenCalledWith(expect.objectContaining({
+      links: [expect.objectContaining({ visibleFrom, visibleUntil: null, visibleTimezone: 'America/Chicago' })],
+    }));
+  });
+
+  it('returns 400 for invalid scheduled link ranges in PATCH', async () => {
+    const res = await json(await PATCH(req('PATCH', {
+      updatedAt: 10,
+      links: [{
+        id: 'a',
+        url: 'example.com',
+        position: 0,
+        visibleFrom: 2000,
+        visibleUntil: 1000,
+        visibleTimezone: 'UTC',
+      }],
+    }), ctx));
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('INVALID_REQUEST');
+    expect(res.body.error.message).toBe('Visible until must be after visible from.');
   });
 
   it('rethrows non-auth errors', async () => {

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { getLinkScheduleError } from '@/lib/scheduling';
 
 // --- Constants ---
 
@@ -40,10 +41,22 @@ const LinkInputSchema = z.object({
   url: z.string().min(1),
   position: z.number().int().min(0),
   pinned: z.boolean().optional().default(false),
+  visibleFrom: z.number().int().min(0).nullable().optional(),
+  visibleUntil: z.number().int().min(0).nullable().optional(),
+  visibleTimezone: z.string().trim().min(1).max(100).nullable().optional(),
   ogTitle: z.string().nullable().optional(),
   ogDescription: z.string().nullable().optional(),
   ogImage: z.string().nullable().optional(),
   ogSiteName: z.string().nullable().optional(),
+}).superRefine((link, ctx) => {
+  const error = getLinkScheduleError(link);
+  if (error) {
+    ctx.addIssue({
+      code: 'custom',
+      message: error,
+      path: error.includes('until') ? ['visibleUntil'] : ['visibleFrom'],
+    });
+  }
 });
 
 export const CreateListSchema = z.object({

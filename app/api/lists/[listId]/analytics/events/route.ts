@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { recordPageView, recordLinkClick, hashVisitorId } from '@/lib/analytics';
-import { getList } from '@/lib/rtdb';
+import { getListWithLinks } from '@/lib/rtdb';
+import { isLinkVisible } from '@/lib/scheduling';
 import { getClientIp, checkRateLimit, RATE_LIMITS } from '@/lib/rate-limiter';
 import { log } from '@/lib/logger';
 import type { TrackEventPayload } from '@/lib/types';
@@ -12,7 +13,7 @@ export async function POST(
   const { listId } = await params;
 
   // Verify list exists
-  const list = await getList(listId);
+  const list = await getListWithLinks(listId);
   if (!list) {
     return NextResponse.json(
       { error: { code: 'LIST_NOT_FOUND', message: 'No list exists with this ID.' } },
@@ -54,6 +55,13 @@ export async function POST(
       { error: { code: 'INVALID_REQUEST', message: 'linkId is required for linkClick events.' } },
       { status: 400 },
     );
+  }
+
+  if (body.type === 'linkClick') {
+    const link = list.links.find((candidate) => candidate.id === body.linkId);
+    if (!link || !isLinkVisible(link)) {
+      return new NextResponse(null, { status: 204 });
+    }
   }
 
   const userAgent = request.headers.get('user-agent') || '';

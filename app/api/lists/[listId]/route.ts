@@ -4,6 +4,7 @@ import { getList, getListWithLinks, updateList, deleteList } from '@/lib/rtdb';
 import { normalizeUrl, isValidHttpUrl } from '@/lib/url';
 import { generateLinkId } from '@/lib/slug';
 import { log } from '@/lib/logger';
+import { normalizeLinkSchedule, withVisibleLinks } from '@/lib/scheduling';
 import {
   UpdateListSchema,
   sanitizeText,
@@ -26,7 +27,15 @@ export async function GET(
     );
   }
 
-  return NextResponse.json(listWithLinks);
+  let authResult: Awaited<ReturnType<typeof verifyAuth>> | null | undefined = null;
+  try {
+    authResult = await verifyAuth(request);
+  } catch {
+    authResult = null;
+  }
+  const isOwner = authResult?.authenticated && authResult.uid === listWithLinks.ownerId;
+
+  return NextResponse.json(isOwner ? listWithLinks : withVisibleLinks(listWithLinks));
 }
 
 export async function PATCH(
@@ -115,6 +124,9 @@ export async function PATCH(
           url: string;
           position: number;
           pinned: boolean;
+          visibleFrom: number | null;
+          visibleUntil: number | null;
+          visibleTimezone: string | null;
           ogTitle: string | null;
           ogDescription: string | null;
           ogImage: string | null;
@@ -144,6 +156,7 @@ export async function PATCH(
           url: urlResult.url,
           position: link.position,
           pinned: link.pinned,
+          ...normalizeLinkSchedule(link),
           ogTitle: sanitizeText(link.ogTitle, MAX_OG_TITLE_LENGTH),
           ogDescription: sanitizeText(link.ogDescription, MAX_OG_DESCRIPTION_LENGTH),
           ogImage: link.ogImage && isValidHttpUrl(link.ogImage) ? link.ogImage : null,

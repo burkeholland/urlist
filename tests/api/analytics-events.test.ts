@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
 vi.mock('@/lib/rtdb', () => ({
-  getList: vi.fn(),
+  getListWithLinks: vi.fn(),
 }));
 vi.mock('@/lib/analytics', () => ({
   recordPageView: vi.fn().mockResolvedValue(undefined),
@@ -17,11 +17,11 @@ vi.mock('@/lib/rate-limiter', () => ({
 vi.mock('@/lib/logger', () => ({ log: vi.fn() }));
 
 import { POST } from '@/app/api/lists/[listId]/analytics/events/route';
-import { getList } from '@/lib/rtdb';
+import { getListWithLinks } from '@/lib/rtdb';
 import { recordPageView, recordLinkClick } from '@/lib/analytics';
 import { checkRateLimit } from '@/lib/rate-limiter';
 
-const mockGetList = getList as ReturnType<typeof vi.fn>;
+const mockGetListWithLinks = getListWithLinks as ReturnType<typeof vi.fn>;
 const mockRecordPageView = recordPageView as ReturnType<typeof vi.fn>;
 const mockRecordLinkClick = recordLinkClick as ReturnType<typeof vi.fn>;
 const mockCheckRateLimit = checkRateLimit as ReturnType<typeof vi.fn>;
@@ -34,18 +34,45 @@ function createRequest(body: unknown): NextRequest {
   });
 }
 
-const mockList = { slug: 'my-list', description: '', ownerId: 'user1', createdAt: 1000, updatedAt: 1000 };
+const link = (id: string, overrides = {}) => ({
+  id,
+  url: `https://example.com/${id}`,
+  position: 0,
+  pinned: false,
+  visibleFrom: null,
+  visibleUntil: null,
+  visibleTimezone: null,
+  ogTitle: null,
+  ogDescription: null,
+  ogImage: null,
+  ogSiteName: null,
+  createdAt: 1000,
+  ...overrides,
+});
+const mockList = {
+  listId: 'list123',
+  slug: 'my-list',
+  description: '',
+  ownerId: 'user1',
+  createdAt: 1000,
+  updatedAt: 1000,
+  links: [link('link1')],
+};
 const params = { params: Promise.resolve({ listId: 'list123' }) };
 
 describe('POST /api/lists/[listId]/analytics/events', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetList.mockResolvedValue(mockList);
+    mockGetListWithLinks.mockResolvedValue(mockList);
     mockCheckRateLimit.mockResolvedValue({ allowed: true });
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('returns 404 when list does not exist', async () => {
-    mockGetList.mockResolvedValue(null);
+    mockGetListWithLinks.mockResolvedValue(null);
     const req = createRequest({ type: 'pageView' });
     const res = await POST(req, params);
     expect(res.status).toBe(404);
@@ -148,6 +175,25 @@ describe('POST /api/lists/[listId]/analytics/events', () => {
       linkId: 'link1',
       visitorId: 'abc123hash',
     }));
+  });
+
+  it('does not record linkClick events for upcoming, expired, or unknown links', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T12:00:00.000Z'));
+    mockGetListWithLinks.mockResolvedValue({
+      ...mockList,
+      links: [
+        link('active'),
+        link('upcoming', { visibleFrom: Date.parse('2026-01-01T12:01:00.000Z'), visibleTimezone: 'UTC' }),
+        link('expired', { visibleUntil: Date.parse('2026-01-01T12:00:00.000Z'), visibleTimezone: 'UTC' }),
+      ],
+    });
+
+    for (const linkId of ['upcoming', 'expired', 'missing']) {
+      const res = await POST(createRequest({ type: 'linkClick', linkId }), params);
+      expect(res.status).toBe(204);
+    }
+    expect(mockRecordLinkClick).not.toHaveBeenCalled();
   });
 
   it('handles missing user-agent header', async () => {

@@ -10,6 +10,7 @@ import { PublishButton } from '@/components/publish-button';
 import { useDraft } from '@/hooks/use-draft';
 import { useDebounce } from '@/hooks/use-debounce';
 import { validateSlugFormat } from '@/lib/slug';
+import { getLinkScheduleError } from '@/lib/scheduling';
 import type { DraftLink, SlugValidationStatus } from '@/lib/types';
 import { nanoid } from 'nanoid';
 
@@ -75,6 +76,9 @@ function ComposeContent() {
         url,
         position: links.length,
         pinned: false,
+        visibleFrom: null,
+        visibleUntil: null,
+        visibleTimezone: null,
         ogTitle: null,
         ogDescription: null,
         ogImage: null,
@@ -138,6 +142,9 @@ function ComposeContent() {
             url: l.url,
             position: i,
             pinned: l.pinned,
+            visibleFrom: l.visibleFrom,
+            visibleUntil: l.visibleUntil,
+            visibleTimezone: l.visibleTimezone,
             ogTitle: l.ogTitle,
             ogDescription: l.ogDescription,
             ogImage: l.ogImage,
@@ -165,7 +172,8 @@ function ComposeContent() {
     links.length === 0 ||
     slugStatus === 'invalid' ||
     slugStatus === 'taken' ||
-    slugStatus === 'checking';
+    slugStatus === 'checking' ||
+    links.some((link) => getLinkScheduleError(link));
 
   if (!loaded) {
     return (

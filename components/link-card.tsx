@@ -1,7 +1,14 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import type { DraftLink, LinkWithId } from '@/lib/types';
+import {
+  DEFAULT_VISIBLE_TIMEZONE,
+  getLinkScheduleError,
+  getLinkVisibilityStatus,
+  hasVisibilitySchedule,
+  isValidTimeZone,
+} from '@/lib/scheduling';
 import { LinkCardPlaceholder } from './link-card-placeholder';
 
 interface LinkCardProps {
@@ -20,6 +27,90 @@ function getHostname(url: string): string {
   }
 }
 
+function getLocalTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || DEFAULT_VISIBLE_TIMEZONE;
+}
+
+function getTimeZoneOptions(selectedTimeZone: string): string[] {
+  const supported = typeof Intl.supportedValuesOf === 'function'
+    ? Intl.supportedValuesOf('timeZone')
+    : [
+        'UTC',
+        'America/Chicago',
+        'America/Denver',
+        'America/Los_Angeles',
+        'America/New_York',
+        'Europe/London',
+        'Europe/Paris',
+        'Asia/Tokyo',
+      ];
+
+  return Array.from(new Set([selectedTimeZone, getLocalTimeZone(), DEFAULT_VISIBLE_TIMEZONE, ...supported]))
+    .filter(isValidTimeZone);
+}
+
+function getTimeZoneParts(timestamp: number, timeZone: string): Record<string, string> {
+  return Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date(timestamp)).map((part) => [part.type, part.value]),
+  );
+}
+
+function formatDateTimeLocalInTimeZone(timestamp: number | null, timeZone: string): string {
+  if (timestamp == null || !isValidTimeZone(timeZone)) return '';
+  const parts = getTimeZoneParts(timestamp, timeZone);
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
+
+function getTimeZoneOffsetMs(timestamp: number, timeZone: string): number {
+  const parts = getTimeZoneParts(timestamp, timeZone);
+  const asUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour),
+    Number(parts.minute),
+    Number(parts.second),
+  );
+  return asUtc - timestamp;
+}
+
+function dateTimeLocalToUtcMs(value: string, timeZone: string): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
+  if (!match || !isValidTimeZone(timeZone)) return null;
+
+  const [, year, month, day, hour, minute] = match;
+  const wallTimeAsUtc = Date.UTC(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+  );
+  let utc = wallTimeAsUtc;
+  for (let i = 0; i < 3; i++) {
+    utc = wallTimeAsUtc - getTimeZoneOffsetMs(utc, timeZone);
+  }
+  return utc;
+}
+
+function formatScheduleTimestamp(timestamp: number | null, timeZone: string): string | null {
+  if (timestamp == null || !isValidTimeZone(timeZone)) return null;
+  return new Intl.DateTimeFormat(undefined, {
+    timeZone,
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(timestamp));
+}
+
 export function LinkCard({ link, onDelete, onUpdate, onPin, isPublicView = false }: LinkCardProps) {
   const [imgError, setImgError] = useState(false);
   const [editingField, setEditingField] = useState<'title' | 'description' | null>(null);
@@ -30,6 +121,18 @@ export function LinkCard({ link, onDelete, onUpdate, onPin, isPublicView = false
   const description = link.ogDescription;
   const isLoading = 'ogLoading' in link && link.ogLoading;
   const isPinned = link.pinned ?? false;
+  const selectedTimeZone = link.visibleTimezone || getLocalTimeZone();
+  const timeZoneOptions = useMemo(() => getTimeZoneOptions(selectedTimeZone), [selectedTimeZone]);
+  const visibilityStatus = getLinkVisibilityStatus(link);
+  const scheduleError = getLinkScheduleError(link);
+  const scheduleSummary = [
+    formatScheduleTimestamp(link.visibleFrom, selectedTimeZone)
+      ? `From ${formatScheduleTimestamp(link.visibleFrom, selectedTimeZone)}`
+      : null,
+    formatScheduleTimestamp(link.visibleUntil, selectedTimeZone)
+      ? `Until ${formatScheduleTimestamp(link.visibleUntil, selectedTimeZone)}`
+      : null,
+  ].filter(Boolean).join(' · ');
 
   useEffect(() => {
     if (editingField && inputRef.current) {
@@ -53,6 +156,32 @@ export function LinkCard({ link, onDelete, onUpdate, onPin, isPublicView = false
 
   const cancelEdit = () => {
     setEditingField(null);
+  };
+
+  const updateScheduleDate = (field: 'visibleFrom' | 'visibleUntil', value: string) => {
+    if (!onUpdate) return;
+    const timestamp = value ? dateTimeLocalToUtcMs(value, selectedTimeZone) : null;
+    const otherTimestamp = field === 'visibleFrom' ? link.visibleUntil : link.visibleFrom;
+    const visibleTimezone = timestamp != null || otherTimestamp != null ? selectedTimeZone : null;
+    onUpdate(
+      link.id,
+      field === 'visibleFrom'
+        ? { visibleFrom: timestamp, visibleTimezone }
+        : { visibleUntil: timestamp, visibleTimezone },
+    );
+  };
+
+  const updateScheduleTimeZone = (timeZone: string) => {
+    if (!onUpdate) return;
+    const currentFrom = formatDateTimeLocalInTimeZone(link.visibleFrom, selectedTimeZone);
+    const currentUntil = formatDateTimeLocalInTimeZone(link.visibleUntil, selectedTimeZone);
+    const visibleFrom = currentFrom ? dateTimeLocalToUtcMs(currentFrom, timeZone) : null;
+    const visibleUntil = currentUntil ? dateTimeLocalToUtcMs(currentUntil, timeZone) : null;
+    onUpdate(link.id, {
+      visibleFrom,
+      visibleUntil,
+      visibleTimezone: visibleFrom != null || visibleUntil != null ? timeZone : null,
+    });
   };
 
   if (isPublicView) {
@@ -84,7 +213,15 @@ export function LinkCard({ link, onDelete, onUpdate, onPin, isPublicView = false
   }
 
   return (
-    <div className="pub-card" style={{ position: 'relative', overflow: 'hidden' }}>
+    <div
+      className={[
+        'pub-card',
+        'edit-card',
+        isPinned ? 'pub-card--pinned' : '',
+        `edit-card--${visibilityStatus}`,
+      ].filter(Boolean).join(' ')}
+      style={{ position: 'relative', overflow: 'hidden' }}
+    >
       {isLoading && (
         <div
           style={{
@@ -155,6 +292,57 @@ export function LinkCard({ link, onDelete, onUpdate, onPin, isPublicView = false
             title={onUpdate ? 'Click to edit description' : undefined}
           >{description || (onUpdate ? 'Add a description…' : '')}</div>
         )}
+        {onUpdate && (
+          <div className="schedule-panel">
+            <div className="schedule-head">
+              <span className={`schedule-status schedule-status--${visibilityStatus}`}>
+                {visibilityStatus}
+              </span>
+              <span className="schedule-note">
+                {scheduleSummary || 'Always visible'}
+              </span>
+            </div>
+            <div className="schedule-grid">
+              <label>
+                <span>Visible from</span>
+                <input
+                  className="input input-sm"
+                  type="datetime-local"
+                  value={formatDateTimeLocalInTimeZone(link.visibleFrom, selectedTimeZone)}
+                  onChange={(e) => updateScheduleDate('visibleFrom', e.target.value)}
+                />
+              </label>
+              <label>
+                <span>Visible until</span>
+                <input
+                  className="input input-sm"
+                  type="datetime-local"
+                  value={formatDateTimeLocalInTimeZone(link.visibleUntil, selectedTimeZone)}
+                  onChange={(e) => updateScheduleDate('visibleUntil', e.target.value)}
+                />
+              </label>
+              <label className="timezone-field">
+                <span>Time zone</span>
+                <select
+                  className="input input-sm"
+                  value={selectedTimeZone}
+                  onChange={(e) => updateScheduleTimeZone(e.target.value)}
+                >
+                  {timeZoneOptions.map((timeZone) => (
+                    <option key={timeZone} value={timeZone}>{timeZone}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {scheduleError ? (
+              <span className="validation-message schedule-error">{scheduleError}</span>
+            ) : (
+              hasVisibilitySchedule(link) && (
+                <span className="schedule-hint">Starts inclusively; expires at the exact until time.</span>
+              )
+            )}
+          </div>
+        )}
       </div>
       {onPin && (
         <button
@@ -192,10 +380,93 @@ export function LinkCard({ link, onDelete, onUpdate, onPin, isPublicView = false
         </button>
       )}
       <style jsx>{`
+        .edit-card {
+          min-height: 92px;
+          height: auto;
+          align-items: flex-start;
+        }
+        .edit-card--upcoming {
+          border-color: color-mix(in srgb, var(--link) 45%, var(--surface-border));
+        }
+        .edit-card--expired {
+          opacity: 0.72;
+          border-color: color-mix(in srgb, var(--danger) 35%, var(--surface-border));
+        }
         @keyframes og-loading-slide {
           0% { transform: translateX(-100%); }
           50% { transform: translateX(150%); }
           100% { transform: translateX(150%); }
+        }
+        .schedule-panel {
+          margin-top: 8px;
+          padding-top: 8px;
+          border-top: 1px solid var(--border);
+        }
+        .schedule-head {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 6px;
+          min-width: 0;
+        }
+        .schedule-status {
+          border-radius: 999px;
+          font-family: var(--font-mono);
+          font-size: 0.6875rem;
+          font-weight: 600;
+          line-height: 1;
+          padding: 4px 7px;
+          text-transform: uppercase;
+        }
+        .schedule-status--active {
+          background: color-mix(in srgb, var(--success) 12%, transparent);
+          color: var(--success);
+        }
+        .schedule-status--upcoming {
+          background: color-mix(in srgb, var(--link) 12%, transparent);
+          color: var(--link);
+        }
+        .schedule-status--expired {
+          background: rgba(220, 38, 38, 0.1);
+          color: var(--danger);
+        }
+        .schedule-note {
+          color: var(--text-muted);
+          font-family: var(--font-mono);
+          font-size: 0.75rem;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .schedule-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(140px, 0.9fr);
+          gap: 8px;
+        }
+        .schedule-grid label {
+          color: var(--text-muted);
+          display: grid;
+          font-size: 0.75rem;
+          gap: 3px;
+        }
+        .schedule-grid :global(.input) {
+          font-size: 0.8125rem;
+          min-width: 0;
+        }
+        .schedule-error {
+          margin-top: 5px;
+        }
+        .schedule-hint {
+          color: var(--text-muted);
+          display: block;
+          font-family: var(--font-mono);
+          font-size: 0.75rem;
+          margin-top: 5px;
+        }
+        @media (max-width: 720px) {
+          .schedule-grid {
+            grid-template-columns: 1fr;
+          }
         }
       `}</style>
     </div>

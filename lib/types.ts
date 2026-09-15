@@ -12,6 +12,9 @@ export interface LinkRecord {
   url: string;
   position: number;
   pinned: boolean;
+  visibleFrom: number | null;
+  visibleUntil: number | null;
+  visibleTimezone: string | null;
   ogTitle: string | null;
   ogDescription: string | null;
   ogImage: string | null;
@@ -38,6 +41,9 @@ export interface DraftLink {
   url: string;
   position: number;
   pinned: boolean;
+  visibleFrom: number | null;
+  visibleUntil: number | null;
+  visibleTimezone: string | null;
   ogTitle: string | null;
   ogDescription: string | null;
   ogImage: string | null;

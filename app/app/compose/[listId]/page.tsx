@@ -7,6 +7,7 @@ import { UrlInput } from '@/components/url-input';
 import { SortableLinkList } from '@/components/sortable-link-list';
 import { useDraft } from '@/hooks/use-draft';
 import { useAuth } from '@/hooks/use-auth';
+import { getLinkScheduleError } from '@/lib/scheduling';
 import type { DraftLink, ListWithLinks } from '@/lib/types';
 import { nanoid } from 'nanoid';
 
@@ -53,6 +54,9 @@ export default function EditComposePage({ params }: EditPageProps) {
               url: l.url,
               position: l.position,
               pinned: l.pinned ?? false,
+              visibleFrom: l.visibleFrom,
+              visibleUntil: l.visibleUntil,
+              visibleTimezone: l.visibleTimezone,
               ogTitle: l.ogTitle,
               ogDescription: l.ogDescription,
               ogImage: l.ogImage,
@@ -80,6 +84,9 @@ export default function EditComposePage({ params }: EditPageProps) {
         url,
         position: links.length,
         pinned: false,
+        visibleFrom: null,
+        visibleUntil: null,
+        visibleTimezone: null,
         ogTitle: null,
         ogDescription: null,
         ogImage: null,
@@ -139,6 +146,9 @@ export default function EditComposePage({ params }: EditPageProps) {
             url: l.url,
             position: i,
             pinned: l.pinned,
+            visibleFrom: l.visibleFrom,
+            visibleUntil: l.visibleUntil,
+            visibleTimezone: l.visibleTimezone,
             ogTitle: l.ogTitle,
             ogDescription: l.ogDescription,
             ogImage: l.ogImage,
@@ -289,9 +299,9 @@ export default function EditComposePage({ params }: EditPageProps) {
         <div className="compose-actions">
           <button
             onClick={handleSave}
-            disabled={links.length === 0 || saving}
+            disabled={links.length === 0 || saving || links.some((link) => getLinkScheduleError(link))}
             className="btn btn-primary"
-            style={links.length === 0 || saving ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+            style={links.length === 0 || saving || links.some((link) => getLinkScheduleError(link)) ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
           >
             {saving ? 'Saving…' : 'Save'}
           </button>

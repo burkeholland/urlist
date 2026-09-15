@@ -204,6 +204,42 @@ describe('POST /api/lists', () => {
     }));
   });
 
+  it('passes normalized scheduled link fields to createList', async () => {
+    const visibleFrom = Date.parse('2026-01-01T15:00:00.000Z');
+    const visibleUntil = Date.parse('2026-01-02T15:00:00.000Z');
+    const res = await json(await POST(req({
+      slug: 'scheduled-test',
+      description: '',
+      links: [{
+        url: 'example.com',
+        position: 0,
+        visibleFrom,
+        visibleUntil,
+        visibleTimezone: 'America/Chicago',
+      }],
+    })));
+    expect(res.status).toBe(201);
+    expect(createList).toHaveBeenCalledWith(expect.objectContaining({
+      links: [expect.objectContaining({ visibleFrom, visibleUntil, visibleTimezone: 'America/Chicago' })],
+    }));
+  });
+
+  it('returns 400 for invalid scheduled link ranges', async () => {
+    const res = await json(await POST(req({
+      slug: 'bad-schedule',
+      links: [{
+        url: 'example.com',
+        position: 0,
+        visibleFrom: 2000,
+        visibleUntil: 1000,
+        visibleTimezone: 'UTC',
+      }],
+    })));
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('INVALID_REQUEST');
+    expect(res.body.error.message).toBe('Visible until must be after visible from.');
+  });
+
   it('returns 500 when auto-generated slug reservation keeps failing', async () => {
     vi.mocked(verifyAuth).mockResolvedValue({ authenticated: false } as any);
     vi.mocked(reserveSlug).mockResolvedValue(false);
