@@ -14,15 +14,21 @@ function createCallbackRequest(opts: {
   code?: string;
   state?: string;
   cookieState?: string;
+  returnTo?: string;
 } = {}): NextRequest {
   const url = new URL('http://localhost:3000/api/auth/callback');
   if (opts.code) url.searchParams.set('code', opts.code);
   if (opts.state) url.searchParams.set('state', opts.state);
 
   const headers = new Headers();
+  const cookies: string[] = [];
   if (opts.cookieState) {
-    headers.set('Cookie', `oauth_state=${opts.cookieState}`);
+    cookies.push(`oauth_state=${opts.cookieState}`);
   }
+  if (opts.returnTo) {
+    cookies.push(`oauth_return_to=${opts.returnTo}`);
+  }
+  if (cookies.length) headers.set('Cookie', cookies.join('; '));
 
   return new NextRequest(url, { headers });
 }
@@ -147,6 +153,38 @@ describe('GET /api/auth/callback', () => {
     expect(sessionCookie).toContain('Path=/');
     expect(sessionCookie).toContain('SameSite=lax');
     expect(sessionCookie).toContain(`Max-Age=${7 * 24 * 60 * 60}`);
+  });
+
+  it('redirects to a safe oauth_return_to path on success', async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ access_token: 'ghp_abc123' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 12345, login: 'octocat', name: 'Mona Lisa' }),
+      });
+    const req = createCallbackRequest({ code: 'valid', state: 'valid', cookieState: 'valid', returnTo: '/app/invites/accept' });
+    const res = await GET(req);
+    expect(res.headers.get('Location')).toBe('http://localhost:3000/app/invites/accept');
+    const returnCookie = res.headers.getSetCookie().find(c => c.startsWith('oauth_return_to='));
+    expect(returnCookie).toMatch(/^oauth_return_to=;/);
+  });
+
+  it('ignores unsafe oauth_return_to values on success', async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ access_token: 'ghp_abc123' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 12345, login: 'octocat', name: 'Mona Lisa' }),
+      });
+    const req = createCallbackRequest({ code: 'valid', state: 'valid', cookieState: 'valid', returnTo: '//evil.test' });
+    const res = await GET(req);
+    expect(res.headers.get('Location')).toBe('http://localhost:3000/app/compose');
   });
 
   it('exchanges the code against GitHub with client credentials and redirect URI', async () => {

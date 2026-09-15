@@ -1,16 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { POST } from '@/app/api/lists/route';
-import { verifyAuth } from '@/lib/auth';
+import { getSessionUser, verifyAuth } from '@/lib/auth';
 import { cleanupFailedPublish, createList, reserveSlug } from '@/lib/rtdb';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limiter';
 
-vi.mock('@/lib/auth', () => ({ verifyAuth: vi.fn() }));
+vi.mock('@/lib/auth', () => ({ verifyAuth: vi.fn(), getSessionUser: vi.fn() }));
 vi.mock('@/lib/rtdb', () => ({
   reserveSlug: vi.fn(),
   createList: vi.fn(),
   cleanupFailedPublish: vi.fn(),
   getUserListIds: vi.fn(),
+  getUserListMemberships: vi.fn(),
   getListsWithLinks: vi.fn(),
 }));
 vi.mock('@/lib/rate-limiter', () => ({
@@ -35,6 +36,7 @@ describe('POST /api/lists', () => {
     vi.clearAllMocks();
     vi.mocked(getClientIp).mockReturnValue('1.2.3.4');
     vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u1', user: { uid: 'u1', login: 'octo', name: null, avatarUrl: null } } as any);
+    vi.mocked(getSessionUser).mockResolvedValue({ uid: 'u1', username: 'octo', name: 'Octo', avatar: 'https://github.com/octo.png' });
     vi.mocked(checkRateLimit).mockResolvedValue({ allowed: true });
     vi.mocked(reserveSlug).mockResolvedValue(true);
     vi.mocked(createList).mockResolvedValue();

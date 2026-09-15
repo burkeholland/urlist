@@ -29,6 +29,23 @@ describe('GET /api/auth/login', () => {
     expect(stateCookie).toContain('Path=/');
   });
 
+  it('sets a safe returnTo cookie when provided', async () => {
+    const req = new NextRequest('http://localhost:3000/api/auth/login?returnTo=%2Fapp%2Finvites%2Faccept');
+    const res = await GET(req);
+    const setCookies = res.headers.getSetCookie();
+    const returnCookie = setCookies.find(c => c.startsWith('oauth_return_to='));
+    expect(returnCookie).toBeDefined();
+    expect(decodeURIComponent(returnCookie!)).toContain('oauth_return_to=/app/invites/accept');
+    expect(returnCookie).toContain('HttpOnly');
+  });
+
+  it('does not set an unsafe returnTo cookie', async () => {
+    const req = new NextRequest('http://localhost:3000/api/auth/login?returnTo=https%3A%2F%2Fevil.test');
+    const res = await GET(req);
+    const returnCookie = res.headers.getSetCookie().find(c => c.startsWith('oauth_return_to='));
+    expect(returnCookie).toBeUndefined();
+  });
+
   it('points the GitHub redirect at the callback URL derived from the request', async () => {
     const req = new NextRequest('http://localhost:3000/api/auth/login');
     const res = await GET(req);

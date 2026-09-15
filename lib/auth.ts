@@ -12,9 +12,17 @@ function getSecret(): Uint8Array {
     if (!raw || raw.length < 32) {
       throw new Error('AUTH_SECRET environment variable must be set (min 32 chars). Generate with: openssl rand -base64 32');
     }
+
     _secret = new TextEncoder().encode(raw);
   }
   return _secret;
+}
+
+function getRequestToken(request: NextRequest): string | undefined {
+  const cookieToken = request.cookies.get(COOKIE_NAME)?.value;
+  const authHeader = request.headers.get('Authorization');
+  const headerToken = authHeader?.match(/^Bearer\s+(.+)$/i)?.[1];
+  return cookieToken || headerToken;
 }
 
 /** Reset cached secret (for testing only). */
@@ -51,10 +59,7 @@ export async function createSessionToken(user: AuthUser): Promise<string> {
 }
 
 export async function verifyAuth(request: NextRequest): Promise<AuthResult> {
-  const cookieToken = request.cookies.get(COOKIE_NAME)?.value;
-  const authHeader = request.headers.get('Authorization');
-  const headerToken = authHeader?.match(/^Bearer\s+(.+)$/i)?.[1];
-  const token = cookieToken || headerToken;
+  const token = getRequestToken(request);
 
   if (!token) {
     return { authenticated: false, uid: null };
@@ -73,7 +78,7 @@ export async function verifyAuth(request: NextRequest): Promise<AuthResult> {
 }
 
 export async function getSessionUser(request: NextRequest): Promise<AuthUser | null> {
-  const token = request.cookies.get(COOKIE_NAME)?.value;
+  const token = getRequestToken(request);
   if (!token) return null;
 
   try {

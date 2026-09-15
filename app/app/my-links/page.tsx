@@ -142,6 +142,7 @@ export default function MyLinksPage() {
                     <span className="slug-slash">/</span>
                     <span className="slug-name">{list.slug}</span>
                   </div>
+                  {list.userRole && <span className="role-pill">{list.userRole}</span>}
                   {list.description && (
                     <p className="tile-desc">{list.description}</p>
                   )}
@@ -187,19 +188,21 @@ export default function MyLinksPage() {
                           <path d="M18 20V10M12 20V4M6 20v-6"/>
                         </svg>
                       </button>
-                      <button
-                        className="icon-btn icon-btn-delete"
-                        title="Delete"
-                        disabled={deletingId === list.listId}
-                        onClick={(e) => handleDelete(e, list)}
-                      >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="3 6 5 6 21 6"/>
-                          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                          <path d="M10 11v6M14 11v6"/>
-                          <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-                        </svg>
-                      </button>
+                      {list.userRole === 'owner' && (
+                        <button
+                          className="icon-btn icon-btn-delete"
+                          title="Delete"
+                          disabled={deletingId === list.listId}
+                          onClick={(e) => handleDelete(e, list)}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                            <path d="M10 11v6M14 11v6"/>
+                            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                          </svg>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -316,6 +319,18 @@ export default function MyLinksPage() {
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
           overflow: hidden;
+        }
+        .role-pill {
+          align-self: flex-start;
+          background: var(--blue-bg);
+          border: 1px solid var(--surface-border);
+          border-radius: 999px;
+          color: var(--accent);
+          display: inline-flex;
+          font-size: 10px;
+          font-weight: 600;
+          padding: 2px 6px;
+          text-transform: uppercase;
         }
         /* List tile - bottom */
         .tile-bottom {

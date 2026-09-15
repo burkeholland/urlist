@@ -27,6 +27,7 @@ interface SortableLinkListProps {
   onDelete: (id: string) => void;
   onUpdate?: (id: string, updates: Partial<DraftLink>) => void;
   onPin?: (id: string) => void;
+  readOnly?: boolean;
 }
 
 function SortableItem({ link, onDelete, onUpdate, onPin }: { link: DraftLink; onDelete: (id: string) => void; onUpdate?: (id: string, updates: Partial<DraftLink>) => void; onPin?: (id: string) => void }) {
@@ -68,7 +69,7 @@ function SortableItem({ link, onDelete, onUpdate, onPin }: { link: DraftLink; on
   );
 }
 
-export function SortableLinkList({ links, onReorder, onDelete, onUpdate, onPin }: SortableLinkListProps) {
+export function SortableLinkList({ links, onReorder, onDelete, onUpdate, onPin, readOnly = false }: SortableLinkListProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -96,7 +97,17 @@ export function SortableLinkList({ links, onReorder, onDelete, onUpdate, onPin }
           color: 'var(--text-muted)',
         }}
       >
-        No links added yet. Paste a URL above to get started.
+        {readOnly ? 'No links in this list.' : 'No links added yet. Paste a URL above to get started.'}
+      </div>
+    );
+  }
+
+  if (readOnly) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {links.map((link) => (
+          <LinkCard key={link.id} link={link} />
+        ))}
       </div>
     );
   }

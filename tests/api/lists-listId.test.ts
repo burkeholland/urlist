@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { DELETE, GET, PATCH } from '@/app/api/lists/[listId]/route';
 import { AuthError, requireAuth, verifyAuth } from '@/lib/auth';
-import { deleteList, getList, getListWithLinks, updateList } from '@/lib/rtdb';
+import { deleteList, getList, getListMembership, getListWithLinks, updateList } from '@/lib/rtdb';
 
 vi.mock('@/lib/auth', () => ({
   verifyAuth: vi.fn(),
@@ -16,7 +16,7 @@ vi.mock('@/lib/auth', () => ({
     }
   },
 }));
-vi.mock('@/lib/rtdb', () => ({ getList: vi.fn(), getListWithLinks: vi.fn(), updateList: vi.fn(), deleteList: vi.fn() }));
+vi.mock('@/lib/rtdb', () => ({ getList: vi.fn(), getListMembership: vi.fn(), getListWithLinks: vi.fn(), updateList: vi.fn(), deleteList: vi.fn() }));
 vi.mock('@/lib/logger', () => ({ log: vi.fn() }));
 
 const ctx = { params: Promise.resolve({ listId: 'list-1' }) };
@@ -28,7 +28,11 @@ const req = (method: string, body?: unknown) => new NextRequest('https://urlist.
 const list = { slug: 's', description: '', ownerId: 'u1', createdAt: 1, updatedAt: 10 };
 
 describe('GET /api/lists/[listId]', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: false, uid: null } as any);
+    vi.mocked(getListMembership).mockResolvedValue(null);
+  });
 
   it('returns 404 when list is not found', async () => {
     vi.mocked(getListWithLinks).mockResolvedValue(null);
@@ -44,6 +48,15 @@ describe('GET /api/lists/[listId]', () => {
     expect(res.status).toBe(200);
     expect(res.body.listId).toBe('list-1');
   });
+
+  it('returns the authenticated user role when the user is a collaborator', async () => {
+    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u2' } as any);
+    vi.mocked(getListMembership).mockResolvedValue({ id: 'u2_list-1', uid: 'u2', listId: 'list-1', role: 'viewer', createdAt: 1, updatedAt: 1 });
+    vi.mocked(getListWithLinks).mockResolvedValue({ listId: 'list-1', ...list, links: [] });
+    const res = await json(await GET(req('GET'), ctx));
+    expect(res.status).toBe(200);
+    expect(res.body.userRole).toBe('viewer');
+  });
 });
 
 describe('PATCH /api/lists/[listId]', () => {
@@ -51,6 +64,7 @@ describe('PATCH /api/lists/[listId]', () => {
     vi.clearAllMocks();
     vi.mocked(requireAuth).mockImplementation(() => undefined);
     vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u1' } as any);
+    vi.mocked(getListMembership).mockResolvedValue(null);
     vi.mocked(getList).mockResolvedValue(list);
     vi.mocked(updateList).mockResolvedValue(20);
   });
@@ -73,12 +87,27 @@ describe('PATCH /api/lists/[listId]', () => {
     expect(res.body.error.message).toBe('List does not exist.');
   });
 
-  it("returns 403 when user doesn't own the list", async () => {
+  it("returns 403 when user doesn't have editor access", async () => {
     vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'other' } as any);
     const res = await json(await PATCH(req('PATCH', { updatedAt: 10 }), ctx));
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('FORBIDDEN');
-    expect(res.body.error.message).toBe('You are not the owner of this list.');
+    expect(res.body.error.message).toBe('You need editor access to update this list.');
+  });
+
+  it('allows editor collaborators to update content', async () => {
+    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u2' } as any);
+    vi.mocked(getListMembership).mockResolvedValue({ id: 'u2_list-1', uid: 'u2', listId: 'list-1', role: 'editor', createdAt: 1, updatedAt: 1 });
+    const res = await json(await PATCH(req('PATCH', { updatedAt: 10, description: 'editor update' }), ctx));
+    expect(res.status).toBe(200);
+    expect(updateList).toHaveBeenCalledWith(expect.objectContaining({ actorId: 'u2' }));
+  });
+
+  it('rejects viewer collaborators on content updates', async () => {
+    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u2' } as any);
+    vi.mocked(getListMembership).mockResolvedValue({ id: 'u2_list-1', uid: 'u2', listId: 'list-1', role: 'viewer', createdAt: 1, updatedAt: 1 });
+    const res = await json(await PATCH(req('PATCH', { updatedAt: 10, description: 'viewer update' }), ctx));
+    expect(res.status).toBe(403);
   });
 
   it('returns 400 when updatedAt is missing', async () => {
@@ -92,6 +121,7 @@ describe('PATCH /api/lists/[listId]', () => {
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('CONFLICT');
     expect(res.body.error.message).toMatch(/modified since your last fetch/);
+    expect(res.body.error.updatedBy).toBe('u1');
   });
 
   it('returns 400 for invalid URL in links', async () => {
@@ -121,7 +151,7 @@ describe('PATCH /api/lists/[listId]', () => {
       level: 'info',
       message: 'List updated',
       service: 'api-lists',
-      data: { listId: 'list-1', hasDescriptionChange: true, hasLinksChange: true },
+      data: expect.objectContaining({ listId: 'list-1', hasDescriptionChange: true, hasLinksChange: true, actorId: 'u1', actorRole: 'owner' }),
     }));
   });
 
@@ -129,7 +159,7 @@ describe('PATCH /api/lists/[listId]', () => {
     const { log } = await import('@/lib/logger');
     await json(await PATCH(req('PATCH', { updatedAt: 10 }), ctx));
     expect(log).toHaveBeenCalledWith(expect.objectContaining({
-      data: { listId: 'list-1', hasDescriptionChange: false, hasLinksChange: false },
+      data: expect.objectContaining({ listId: 'list-1', hasDescriptionChange: false, hasLinksChange: false }),
     }));
   });
 
@@ -172,6 +202,7 @@ describe('PATCH /api/lists/[listId]', () => {
     const res = await json(await PATCH(req('PATCH', { updatedAt: 10, links: [{ url: 'example.com', position: 0 }] }), ctx));
     expect(res.status).toBe(200);
     expect(updateList).toHaveBeenCalledWith(expect.objectContaining({
+      actorId: 'u1',
       links: [expect.objectContaining({ id: expect.any(String), url: 'https://example.com/' })],
     }));
   });
@@ -211,6 +242,7 @@ describe('DELETE /api/lists/[listId]', () => {
     vi.clearAllMocks();
     vi.mocked(requireAuth).mockImplementation(() => undefined);
     vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u1' } as any);
+    vi.mocked(getListMembership).mockResolvedValue(null);
     vi.mocked(getList).mockResolvedValue(list);
     vi.mocked(deleteList).mockResolvedValue();
   });
@@ -232,12 +264,13 @@ describe('DELETE /api/lists/[listId]', () => {
     expect(res.body.error.message).toBe('List does not exist.');
   });
 
-  it("returns 403 when user doesn't own list", async () => {
+  it("returns 403 when user isn't the owner", async () => {
     vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'other' } as any);
+    vi.mocked(getListMembership).mockResolvedValue({ id: 'other_list-1', uid: 'other', listId: 'list-1', role: 'editor', createdAt: 1, updatedAt: 1 });
     const res = await json(await DELETE(req('DELETE'), ctx));
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('FORBIDDEN');
-    expect(res.body.error.message).toBe('You are not the owner of this list.');
+    expect(res.body.error.message).toBe('Only the owner can delete this list.');
   });
 
   it('returns deleted true and listId on success', async () => {

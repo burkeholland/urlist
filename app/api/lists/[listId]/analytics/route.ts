@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth, requireAuth, AuthError } from '@/lib/auth';
 import { getList } from '@/lib/rtdb';
 import { getListAnalytics } from '@/lib/analytics';
+import { getEffectiveListRole, hasMinimumRole } from '@/lib/authorization';
 
 export async function GET(
   request: NextRequest,
@@ -13,7 +14,7 @@ export async function GET(
     const authResult = await verifyAuth(request);
     requireAuth(authResult);
 
-    // Verify list exists and user owns it
+    // Verify list exists and user has collaborator access
     const list = await getList(listId);
     if (!list) {
       return NextResponse.json(
@@ -22,9 +23,10 @@ export async function GET(
       );
     }
 
-    if (list.ownerId !== authResult.uid) {
+    const userRole = await getEffectiveListRole(listId, list, authResult.uid);
+    if (!hasMinimumRole(userRole, 'viewer')) {
       return NextResponse.json(
-        { error: { code: 'FORBIDDEN', message: 'You are not the owner of this list.' } },
+        { error: { code: 'FORBIDDEN', message: 'You do not have access to this list.' } },
         { status: 403 },
       );
     }
