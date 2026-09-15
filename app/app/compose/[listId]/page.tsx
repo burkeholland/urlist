@@ -1,14 +1,24 @@
 'use client';
 
-import { useEffect, useState, useCallback, use } from 'react';
+import { useEffect, useState, useCallback, use, useMemo, useDeferredValue } from 'react';
 import { useRouter } from 'next/navigation';
 import { NavHeader } from '@/components/nav-header';
 import { UrlInput } from '@/components/url-input';
 import { SortableLinkList } from '@/components/sortable-link-list';
+import { LinkFilterBar } from '@/components/link-filter-bar';
 import { useDraft } from '@/hooks/use-draft';
 import { useAuth } from '@/hooks/use-auth';
 import type { DraftLink, ListWithLinks } from '@/lib/types';
 import { nanoid } from 'nanoid';
+import {
+  clearLinkFilters,
+  defaultLinkFilters,
+  filterIndexedLinks,
+  getLinkDomainOptions,
+  getLinkEmptyStateMessage,
+  hasActiveLinkFilters,
+  indexLinks,
+} from '@/lib/link-filters';
 
 interface EditPageProps {
   params: Promise<{ listId: string }>;
@@ -24,6 +34,8 @@ export default function EditComposePage({ params }: EditPageProps) {
   const [fetching, setFetching] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState(defaultLinkFilters());
+  const deferredQuery = useDeferredValue(filters.query);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -162,6 +174,19 @@ export default function EditComposePage({ params }: EditPageProps) {
     }
   };
 
+  const indexedLinks = useMemo(() => indexLinks(links), [links]);
+  const domainOptions = useMemo(() => getLinkDomainOptions(indexedLinks), [indexedLinks]);
+  const visibleLinks = useMemo(
+    () => filterIndexedLinks(indexedLinks, { ...filters, query: deferredQuery }),
+    [indexedLinks, filters, deferredQuery],
+  );
+  const visibleCount = visibleLinks.length;
+  const totalCount = links.length;
+  const emptyMessage = getLinkEmptyStateMessage(visibleCount, totalCount, filters);
+  const reorderingDisabledMessage = hasActiveLinkFilters(filters)
+    ? 'Filtering only changes what is shown. Clear all filters to reorder links.'
+    : undefined;
+
   if (authLoading || fetching || !loaded) {
     return (
       <div>
@@ -281,8 +306,26 @@ export default function EditComposePage({ params }: EditPageProps) {
               Links <span className="count-badge">{links.length}</span>
             </h2>
           </div>
+          <LinkFilterBar
+            label="Filter draft links"
+            filters={filters}
+            onChange={setFilters}
+            onClear={() => setFilters(clearLinkFilters())}
+            visibleCount={visibleCount}
+            totalCount={totalCount}
+            domainOptions={domainOptions}
+          />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <SortableLinkList links={links} onReorder={reorderLinks} onDelete={removeLink} onUpdate={updateLink} onPin={pinLink} />
+            <SortableLinkList
+              links={visibleLinks.map(({ link }) => link)}
+              onReorder={reorderLinks}
+              onDelete={removeLink}
+              onUpdate={updateLink}
+              onPin={pinLink}
+              sortable={!hasActiveLinkFilters(filters)}
+              emptyMessage={emptyMessage || 'No links added yet. Paste a URL above to get started.'}
+              reorderingDisabledMessage={reorderingDisabledMessage}
+            />
           </div>
         </section>
 
