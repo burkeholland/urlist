@@ -133,6 +133,7 @@ export function CollectionImport({ currentLinks, onImport }: CollectionImportPro
           accept=".txt,.csv,.html,.htm,text/plain,text/csv,text/html"
           onChange={(event) => void handleFile(event.target.files?.[0])}
           className="input input-sm"
+          aria-label="Import file"
         />
         <button
           type="button"
@@ -153,13 +154,14 @@ export function CollectionImport({ currentLinks, onImport }: CollectionImportPro
         }}
         className="input import-textarea"
         placeholder="Paste one URL per line, CSV with url/title/description/folder columns, or Netscape bookmark HTML."
+        aria-label="Import content"
       />
       <p className="xsmall muted">
         Limits: {MAX_LINKS} links per list, {MAX_IMPORT_ROWS} import rows, {MAX_IMPORT_BYTES} bytes, UTF-8 only.
       </p>
 
-      {error && <p className="validation-message">{error}</p>}
-      {importedMessage && <p className="import-success">{importedMessage}</p>}
+      {error && <p className="validation-message" role="alert">{error}</p>}
+      {importedMessage && <p className="import-success" aria-live="polite">{importedMessage}</p>}
 
       {preview && (
         <div className="import-preview">

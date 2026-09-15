@@ -75,6 +75,11 @@ interface RawImportRow {
   pinned?: boolean;
 }
 
+interface CsvRecord {
+  sourceRow: number;
+  line: string;
+}
+
 interface ParseOptions {
   format?: ImportFormat | 'auto';
   existingUrls?: string[];
@@ -120,7 +125,6 @@ function normalizeExistingUrls(existingUrls: string[] | undefined): Set<string> 
 function cleanImportedText(value: string | null | undefined, maxLength: number): string | null {
   if (typeof value !== 'string' || !value) return null;
   const cleaned = decodeHtml(value.replace(/<[^>]*>/g, ''))
-    // eslint-disable-next-line no-control-regex
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
     .trim()
     .slice(0, maxLength);
@@ -134,9 +138,21 @@ function parseBoolean(value: string | null | undefined): boolean {
 }
 
 function decodeHtml(value: string): string {
+  const decodeNumericEntity = (match: string, code: number) => {
+    if (
+      !Number.isInteger(code) ||
+      code < 0 ||
+      code > 0x10ffff ||
+      (code >= 0xd800 && code <= 0xdfff)
+    ) {
+      return match;
+    }
+    return String.fromCodePoint(code);
+  };
+
   return value
-    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(Number.parseInt(code, 16)))
+    .replace(/&#(\d+);/g, (match, code) => decodeNumericEntity(match, Number.parseInt(code, 10)))
+    .replace(/&#x([0-9a-f]+);/gi, (match, code) => decodeNumericEntity(match, Number.parseInt(code, 16)))
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&#x27;/g, "'")
@@ -190,11 +206,78 @@ function parseCsvLine(line: string): string[] {
   return cells;
 }
 
+function parseCsvRecords(content: string): CsvRecord[] {
+  const records: CsvRecord[] = [];
+  let current = '';
+  let quoted = false;
+  let atFieldStart = true;
+  let sourceRow = 1;
+  let row = 1;
+
+  const pushRecord = () => {
+    if (current.trim().length > 0) {
+      records.push({ sourceRow, line: current });
+    }
+    current = '';
+    sourceRow = row + 1;
+    atFieldStart = true;
+  };
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i];
+    const isCrLf = char === '\r' && content[i + 1] === '\n';
+    const isNewline = char === '\n' || char === '\r';
+
+    if (isNewline) {
+      if (quoted) {
+        current += '\n';
+      } else {
+        pushRecord();
+      }
+      if (isCrLf) i++;
+      row++;
+      continue;
+    }
+
+    if (quoted) {
+      if (char === '"' && content[i + 1] === '"') {
+        current += char;
+        current += content[i + 1];
+        i++;
+        atFieldStart = false;
+        continue;
+      }
+      if (char === '"') {
+        quoted = false;
+      }
+      current += char;
+      atFieldStart = false;
+      continue;
+    }
+
+    if (char === ',') {
+      current += char;
+      atFieldStart = true;
+      continue;
+    }
+
+    if (char === '"' && atFieldStart) {
+      quoted = true;
+    }
+    current += char;
+    atFieldStart = false;
+  }
+
+  if (quoted) {
+    throw new CollectionImportError('MALFORMED_CSV', 'CSV contains an unterminated quoted field.');
+  }
+
+  pushRecord();
+  return records;
+}
+
 function parseCsvRows(content: string): RawImportRow[] {
-  const physicalLines = content.split(/\r?\n/);
-  const lines = physicalLines
-    .map((line, index) => ({ line, sourceRow: index + 1 }))
-    .filter(({ line }) => line.trim().length > 0);
+  const lines = parseCsvRecords(content);
   if (lines.length === 0) return [];
 
   const firstCells = parseCsvLine(lines[0].line).map((cell) => cell.trim().toLowerCase());
@@ -422,23 +505,29 @@ export function serializeCollectionHtml(list: ListWithLinks): string {
     '<DL><p>',
   ];
   const links = [...list.links].sort((a, b) => a.position - b.position);
-  const folderGroups = new Map<string, LinkWithId[]>();
+  let openFolder: string | null = null;
 
   for (const link of links) {
     const folder = link.folder?.trim();
     if (!folder) {
+      if (openFolder) {
+        lines.push('    </DL><p>');
+        openFolder = null;
+      }
       appendBookmark(lines, link, '    ');
       continue;
     }
-    const group = folderGroups.get(folder) ?? [];
-    group.push(link);
-    folderGroups.set(folder, group);
+
+    if (openFolder !== folder) {
+      if (openFolder) lines.push('    </DL><p>');
+      lines.push(`    <DT><H3>${escapeHtml(folder)}</H3>`);
+      lines.push('    <DL><p>');
+      openFolder = folder;
+    }
+    appendBookmark(lines, link, '        ');
   }
 
-  for (const [folder, group] of folderGroups) {
-    lines.push(`    <DT><H3>${escapeHtml(folder)}</H3>`);
-    lines.push('    <DL><p>');
-    for (const link of group) appendBookmark(lines, link, '        ');
+  if (openFolder) {
     lines.push('    </DL><p>');
   }
 

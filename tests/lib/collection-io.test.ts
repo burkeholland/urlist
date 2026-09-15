@@ -105,6 +105,23 @@ describe('parseCollectionImport', () => {
     });
   });
 
+  it('parses RFC-style CSV records with quoted newlines as one import row', () => {
+    const preview = parseCollectionImport(
+      'url,title,description,folder,pinned\r\nexample.com,"Line\nbreak title","Multi\nline desc",Folder,true',
+      { format: 'csv' },
+    );
+
+    expect(preview.summary.totalRows).toBe(1);
+    expect(preview.valid[0]).toMatchObject({
+      sourceRow: 2,
+      url: 'https://example.com/',
+      title: 'Line\nbreak title',
+      description: 'Multi\nline desc',
+      folder: 'Folder',
+      pinned: true,
+    });
+  });
+
   it('parses Netscape bookmark HTML titles, descriptions, folders, and entities', () => {
     const preview = parseCollectionImport(
       [
@@ -126,6 +143,17 @@ describe('parseCollectionImport', () => {
       title: '<Docs>',
       description: 'Reference & notes',
       folder: 'Research & Docs',
+    });
+  });
+
+  it('treats malformed HTML entities as text instead of surfacing server errors', () => {
+    const preview = parseCollectionImport(
+      '<!DOCTYPE NETSCAPE-Bookmark-file-1>\n<DL><p>\n<DT><A HREF="https://example.com/">&#999999999999999999999;</A>',
+    );
+
+    expect(preview.valid[0]).toMatchObject({
+      url: 'https://example.com/',
+      title: '&#999999999999999999999;',
     });
   });
 
@@ -189,5 +217,6 @@ describe('collection export serialization', () => {
     expect(html).toContain('<DT><H3>Research</H3>');
     expect(html).toContain('<DT><A HREF="https://first.example.com/">=SUM(1,1)</A>');
     expect(html).toContain('<DT><A HREF="https://second.example.com/">&lt;Second&gt;</A>');
+    expect(html.indexOf('https://first.example.com/')).toBeLessThan(html.indexOf('https://second.example.com/'));
   });
 });
