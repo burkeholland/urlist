@@ -65,6 +65,7 @@ export async function POST(
       await recordPageView({
         slug: list.slug,
         visitorId,
+        surface: body.surface ?? 'page',
         referrer: body.referrer ?? null,
         utmSource: body.utmSource ?? null,
         utmMedium: body.utmMedium ?? null,
@@ -76,6 +77,7 @@ export async function POST(
         slug: list.slug,
         linkId: body.linkId,
         visitorId,
+        surface: body.surface ?? 'page',
         referrer: body.referrer ?? null,
       });
     }

@@ -75,11 +75,11 @@ const DAY = 24 * 60 * 60 * 1000;
 const t0 = new Date('2026-07-20T12:00:00Z').getTime();
 
 const pv = (id: string, slug: string, visitorId: string, timestamp: number, extra: Doc = {}): Doc => ({
-  id, slug, type: 'pageView', visitorId, referrer: null, utmSource: null, utmMedium: null,
+  id, slug, type: 'pageView', surface: 'page', visitorId, referrer: null, utmSource: null, utmMedium: null,
   utmCampaign: null, country: null, timestamp, ...extra,
 });
 const lc = (id: string, slug: string, linkId: string, visitorId: string, timestamp: number, extra: Doc = {}): Doc => ({
-  id, slug, type: 'linkClick', linkId, visitorId, referrer: null, timestamp, ...extra,
+  id, slug, type: 'linkClick', surface: 'page', linkId, visitorId, referrer: null, timestamp, ...extra,
 });
 
 describe('hashVisitorId', () => {
@@ -127,12 +127,13 @@ describe('recordPageView', () => {
     vi.mocked(getDb).mockReturnValue(db as any);
     await recordPageView({
       slug: 'my-list', visitorId: 'v1', referrer: 'https://twitter.com/x',
-      utmSource: 's', utmMedium: 'm', utmCampaign: 'c', country: 'US',
+      surface: 'embed', utmSource: 's', utmMedium: 'm', utmCampaign: 'c', country: 'US',
     });
     const docs = [...db.data.get('analytics')!.values()];
     expect(docs).toHaveLength(1);
     expect(docs[0].id).toMatch(/^pv_[A-Za-z0-9_-]{12}$/);
     expect(docs[0].type).toBe('pageView');
+    expect(docs[0].surface).toBe('embed');
     expect(docs[0].slug).toBe('my-list');
     expect(docs[0].visitorId).toBe('v1');
     expect(docs[0].referrer).toBe('https://twitter.com/x');
@@ -148,11 +149,12 @@ describe('recordLinkClick', () => {
   it('creates a linkClick analytics document', async () => {
     const db = createMockDb();
     vi.mocked(getDb).mockReturnValue(db as any);
-    await recordLinkClick({ slug: 'my-list', linkId: 'link-1', visitorId: 'v1', referrer: null });
+    await recordLinkClick({ slug: 'my-list', linkId: 'link-1', visitorId: 'v1', surface: 'embed', referrer: null });
     const docs = [...db.data.get('analytics')!.values()];
     expect(docs).toHaveLength(1);
     expect(docs[0].id).toMatch(/^lc_[A-Za-z0-9_-]{12}$/);
     expect(docs[0].type).toBe('linkClick');
+    expect(docs[0].surface).toBe('embed');
     expect(docs[0].linkId).toBe('link-1');
     expect(docs[0].referrer).toBeNull();
   });
@@ -163,10 +165,10 @@ describe('getListAnalytics', () => {
     const db = createMockDb({
       analytics: [
         pv('e1', 'my-list', 'v1', t0, { referrer: 'https://www.twitter.com/post', country: 'US' }),
-        pv('e2', 'my-list', 'v2', t0 + DAY, { referrer: 'https://linkedin.com/in/x', country: 'DE' }),
+        pv('e2', 'my-list', 'v2', t0 + DAY, { surface: 'embed', referrer: 'https://linkedin.com/in/x', country: 'DE' }),
         pv('e3', 'my-list', 'v1', t0 + DAY, {}),
         lc('e4', 'my-list', 'link-1', 'v1', t0 + DAY),
-        lc('e5', 'my-list', 'link-1', 'v2', t0 + DAY),
+        lc('e5', 'my-list', 'link-1', 'v2', t0 + DAY, { surface: 'embed' }),
         lc('e6', 'my-list', 'link-2', 'v1', t0 + DAY),
         lc('e7', 'my-list', null as any, 'v1', t0 + DAY),
         pv('e8', 'other-list', 'v9', t0),
@@ -185,6 +187,12 @@ describe('getListAnalytics', () => {
     expect(result.uniqueVisitors).toBe(2);
     expect(result.totalClicks).toBe(4);
     expect(result.clickThroughRate).toBeCloseTo(4 / 3);
+    expect(result.surfaceBreakdown).toEqual({
+      pageViews: 2,
+      embedViews: 1,
+      pageClicks: 3,
+      embedClicks: 1,
+    });
 
     // Daily buckets sorted by date
     expect(result.viewsOverTime).toEqual([
@@ -300,6 +308,12 @@ describe('getListAnalytics', () => {
     expect(result.uniqueVisitors).toBe(0);
     expect(result.totalClicks).toBe(0);
     expect(result.clickThroughRate).toBe(0);
+    expect(result.surfaceBreakdown).toEqual({
+      pageViews: 0,
+      embedViews: 0,
+      pageClicks: 0,
+      embedClicks: 0,
+    });
     expect(result.viewsOverTime).toEqual([]);
     expect(result.topReferrers).toEqual([]);
     expect(result.geoBreakdown).toEqual([]);

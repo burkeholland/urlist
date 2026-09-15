@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { unstable_noStore as noStore } from 'next/cache';
 import { getListWithLinks, resolveSlug } from '@/lib/rtdb';
+import { getPublicRenderOptions } from '@/lib/embed';
 import { PublicListClient } from './client';
 
 // Force dynamic rendering (no caching)
@@ -12,11 +13,12 @@ interface PageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   noStore();
 
   const { slug: slugSegments } = await params;
   const slug = slugSegments.join('/');
+  const renderOptions = getPublicRenderOptions(await searchParams);
 
   const listId = await resolveSlug(slug);
   if (!listId) {
@@ -28,14 +30,25 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     return { title: 'List Not Found — The Urlist' };
   }
 
+  const description = list.description || `A curated list of ${list.links.length} links`;
+  const title = renderOptions.isEmbed
+    ? `${slug} embed — The Urlist`
+    : `${slug} — The Urlist`;
+
   return {
-    title: `${slug} — The Urlist`,
-    description: list.description || `A curated list of ${list.links.length} links`,
-    openGraph: {
-      title: `${slug} — The Urlist`,
-      description: list.description || `A curated list of ${list.links.length} links`,
-      url: `/${slug}`,
+    title,
+    description,
+    alternates: {
+      canonical: `/${slug}`,
     },
+    robots: renderOptions.isEmbed ? { index: false, follow: false } : undefined,
+    openGraph: renderOptions.isEmbed
+      ? undefined
+      : {
+          title,
+          description,
+          url: `/${slug}`,
+        },
   };
 }
 
@@ -46,6 +59,7 @@ export default async function PublicListPage({ params, searchParams }: PageProps
   const slug = slugSegments.join('/');
   const search = await searchParams;
   const justPublished = search.published === 'true';
+  const renderOptions = getPublicRenderOptions(search);
 
   const listId = await resolveSlug(slug);
   if (!listId) {
@@ -57,5 +71,12 @@ export default async function PublicListPage({ params, searchParams }: PageProps
     notFound();
   }
 
-  return <PublicListClient list={list} slug={slug} justPublished={justPublished} />;
+  return (
+    <PublicListClient
+      list={list}
+      slug={slug}
+      justPublished={justPublished}
+      renderOptions={renderOptions}
+    />
+  );
 }

@@ -349,9 +349,9 @@ textarea.input {
   border-radius: var(--radius);
   overflow: hidden;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 0;
-  height: 92px;
+  min-height: 92px;
   background: var(--surface);
   transition: transform 0.15s, box-shadow 0.15s;
 }
@@ -389,7 +389,7 @@ textarea.input {
   object-fit: cover;
 }
 .pub-card-body {
-  padding: 16px 20px;
+  padding: 14px 20px;
   min-width: 0;
   flex: 1;
   overflow: hidden;
@@ -437,4 +437,30 @@ textarea.input {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.pub-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.pub-card-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.pub-card-action:hover {
+  background: var(--bg-secondary);
+  color: var(--text);
+  border-color: var(--input-border);
 }

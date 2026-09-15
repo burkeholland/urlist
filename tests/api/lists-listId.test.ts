@@ -28,7 +28,21 @@ const req = (method: string, body?: unknown) => new NextRequest('https://urlist.
 const list = { slug: 's', description: '', ownerId: 'u1', createdAt: 1, updatedAt: 10 };
 
 describe('GET /api/lists/[listId]', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(requireAuth).mockImplementation(() => undefined);
+    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u1' } as any);
+  });
+
+  it('returns 401 when not authenticated', async () => {
+    vi.mocked(requireAuth).mockImplementation(() => {
+      throw new AuthError('UNAUTHORIZED', 'Sign in');
+    });
+    const res = await json(await GET(req('GET'), ctx));
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('UNAUTHORIZED');
+    expect(res.body.error.message).toBe('Sign in');
+  });
 
   it('returns 404 when list is not found', async () => {
     vi.mocked(getListWithLinks).mockResolvedValue(null);
@@ -43,6 +57,14 @@ describe('GET /api/lists/[listId]', () => {
     const res = await json(await GET(req('GET'), ctx));
     expect(res.status).toBe(200);
     expect(res.body.listId).toBe('list-1');
+  });
+
+  it("returns 403 when user doesn't own the list", async () => {
+    vi.mocked(getListWithLinks).mockResolvedValue({ listId: 'list-1', ...list, ownerId: 'other', links: [] });
+    const res = await json(await GET(req('GET'), ctx));
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('FORBIDDEN');
+    expect(res.body.error.message).toBe('You are not the owner of this list.');
   });
 });
 

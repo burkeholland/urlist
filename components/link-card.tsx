@@ -10,6 +10,11 @@ interface LinkCardProps {
   onUpdate?: (id: string, updates: Partial<DraftLink>) => void;
   onPin?: (id: string) => void;
   isPublicView?: boolean;
+  publicMode?: 'page' | 'embed';
+  canSharePublicLink?: boolean;
+  onPublicLinkClick?: (id: string) => void;
+  onCopyPublicLink?: (link: DraftLink | LinkWithId) => void;
+  onSharePublicLink?: (link: DraftLink | LinkWithId) => void;
 }
 
 function getHostname(url: string): string {
@@ -20,7 +25,74 @@ function getHostname(url: string): string {
   }
 }
 
-export function LinkCard({ link, onDelete, onUpdate, onPin, isPublicView = false }: LinkCardProps) {
+function PublicLinkActions({
+  link,
+  canShare,
+  onCopy,
+  onShare,
+}: {
+  link: DraftLink | LinkWithId;
+  canShare: boolean;
+  onCopy?: (link: DraftLink | LinkWithId) => void;
+  onShare?: (link: DraftLink | LinkWithId) => void;
+}) {
+  if (!onCopy && !(canShare && onShare)) {
+    return null;
+  }
+
+  return (
+    <div className="pub-card-actions" role="group" aria-label="Share link">
+      {onCopy && (
+        <button
+          type="button"
+          className="pub-card-action"
+          onClick={(event) => {
+            event.stopPropagation();
+            onCopy(link);
+          }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+          Copy
+        </button>
+      )}
+      {canShare && onShare && (
+        <button
+          type="button"
+          className="pub-card-action"
+          onClick={(event) => {
+            event.stopPropagation();
+            onShare(link);
+          }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="18" cy="5" r="3" />
+            <circle cx="6" cy="12" r="3" />
+            <circle cx="18" cy="19" r="3" />
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+          </svg>
+          Share
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function LinkCard({
+  link,
+  onDelete,
+  onUpdate,
+  onPin,
+  isPublicView = false,
+  publicMode = 'page',
+  canSharePublicLink = false,
+  onPublicLinkClick,
+  onCopyPublicLink,
+  onSharePublicLink,
+}: LinkCardProps) {
   const [imgError, setImgError] = useState(false);
   const [editingField, setEditingField] = useState<'title' | 'description' | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -68,10 +140,25 @@ export function LinkCard({ link, onDelete, onUpdate, onPin, isPublicView = false
         </div>
         <div className="pub-card-body">
           <div className="pub-card-title">
-            <a href={link.url} target="_blank" rel="noopener noreferrer">{title}</a>
+            <a
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => onPublicLinkClick?.(link.id)}
+            >
+              {title}
+            </a>
           </div>
           <div className="pub-card-domain">{hostname}</div>
           {description && <div className="pub-card-desc">{description}</div>}
+          {publicMode === 'page' && (
+            <PublicLinkActions
+              link={link}
+              canShare={canSharePublicLink}
+              onCopy={onCopyPublicLink}
+              onShare={onSharePublicLink}
+            />
+          )}
         </div>
         {isPinned && (
           <svg className="pub-card-pin-icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-label="Pinned">

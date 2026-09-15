@@ -17,16 +17,37 @@ export async function GET(
   { params }: { params: Promise<{ listId: string }> },
 ) {
   const { listId } = await params;
-  const listWithLinks = await getListWithLinks(listId);
 
-  if (!listWithLinks) {
-    return NextResponse.json(
-      { error: { code: 'LIST_NOT_FOUND', message: 'No list exists with this ID.' } },
-      { status: 404 },
-    );
+  try {
+    const authResult = await verifyAuth(request);
+    requireAuth(authResult);
+
+    const listWithLinks = await getListWithLinks(listId);
+
+    if (!listWithLinks) {
+      return NextResponse.json(
+        { error: { code: 'LIST_NOT_FOUND', message: 'No list exists with this ID.' } },
+        { status: 404 },
+      );
+    }
+
+    if (listWithLinks.ownerId !== authResult.uid) {
+      return NextResponse.json(
+        { error: { code: 'FORBIDDEN', message: 'You are not the owner of this list.' } },
+        { status: 403 },
+      );
+    }
+
+    return NextResponse.json(listWithLinks);
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json(
+        { error: { code: error.code, message: error.message } },
+        { status: 401 },
+      );
+    }
+    throw error;
   }
-
-  return NextResponse.json(listWithLinks);
 }
 
 export async function PATCH(
