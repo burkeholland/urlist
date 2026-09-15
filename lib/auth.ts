@@ -6,7 +6,7 @@ const COOKIE_NAME = 'session';
 
 // Lazy-initialized secret — throws on first use if AUTH_SECRET is missing
 let _secret: Uint8Array | null = null;
-function getSecret(): Uint8Array {
+export function getAuthSecret(): Uint8Array {
   if (!_secret) {
     const raw = process.env.AUTH_SECRET;
     if (!raw || raw.length < 32) {
@@ -47,7 +47,7 @@ export async function createSessionToken(user: AuthUser): Promise<string> {
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('7d')
-    .sign(getSecret());
+    .sign(getAuthSecret());
 }
 
 export async function verifyAuth(request: NextRequest): Promise<AuthResult> {
@@ -61,7 +61,7 @@ export async function verifyAuth(request: NextRequest): Promise<AuthResult> {
   }
 
   try {
-    const { payload } = await jwtVerify(token, getSecret());
+    const { payload } = await jwtVerify(token, getAuthSecret());
     const parsed = JwtPayloadSchema.safeParse(payload);
     if (!parsed.success) {
       return { authenticated: false, uid: null, error: 'Malformed session token.' };
@@ -77,7 +77,7 @@ export async function getSessionUser(request: NextRequest): Promise<AuthUser | n
   if (!token) return null;
 
   try {
-    const { payload } = await jwtVerify(token, getSecret());
+    const { payload } = await jwtVerify(token, getAuthSecret());
     const parsed = JwtPayloadSchema.safeParse(payload);
     if (!parsed.success) return null;
     return {
@@ -103,5 +103,21 @@ export class AuthError extends Error {
     super(message);
     this.code = code;
     this.name = 'AuthError';
+  }
+}
+
+export function normalizeSafeReturnTo(value: string | null | undefined): string | null {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(value, 'https://urlist.local');
+    if (parsed.origin !== 'https://urlist.local') {
+      return null;
+    }
+    return parsed.pathname + parsed.search + parsed.hash;
+  } catch {
+    return null;
   }
 }

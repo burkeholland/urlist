@@ -115,6 +115,12 @@ export function NavHeader() {
               {user && (
                 <>
                   <Link
+                    href="/app/capture"
+                    className="text-[15px] text-[var(--text-muted)] no-underline transition-colors duration-150 hover:text-[var(--text)]"
+                  >
+                    Quick capture
+                  </Link>
+                  <Link
                     href="/app/my-links"
                     className="text-[15px] text-[var(--text-muted)] no-underline transition-colors duration-150 hover:text-[var(--text)]"
                   >

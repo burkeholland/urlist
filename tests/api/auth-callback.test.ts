@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
-vi.mock('@/lib/auth', () => ({
-  createSessionToken: vi.fn().mockResolvedValue('mock-session-token'),
-}));
+vi.mock('@/lib/auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/auth')>();
+  return {
+    ...actual,
+    createSessionToken: vi.fn().mockResolvedValue('mock-session-token'),
+  };
+});
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
@@ -149,6 +153,24 @@ describe('GET /api/auth/callback', () => {
     expect(sessionCookie).toContain(`Max-Age=${7 * 24 * 60 * 60}`);
   });
 
+  it('redirects to a validated saved returnTo path on success', async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ access_token: 'ghp_abc123' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 12345, login: 'octocat', name: 'Mona Lisa' }),
+      });
+    const headers = new Headers({ Cookie: 'oauth_state=valid; oauth_return_to=%2Fapp%2Fcapture' });
+    const req = new NextRequest('http://localhost:3000/api/auth/callback?code=valid&state=valid', { headers });
+    const res = await GET(req);
+    expect(res.headers.get('Location')).toContain('/app/capture');
+    const returnToCookie = res.headers.getSetCookie().find(c => c.startsWith('oauth_return_to='));
+    expect(returnToCookie).toContain('Max-Age=0');
+  });
+
   it('exchanges the code against GitHub with client credentials and redirect URI', async () => {
     mockFetch
       .mockResolvedValueOnce({
@@ -206,6 +228,8 @@ describe('GET /api/auth/callback', () => {
     expect(oauthCookie).toMatch(/^oauth_state=;/);
     expect(oauthCookie).toContain('Max-Age=0');
     expect(oauthCookie).toContain('Path=/');
+    const returnToCookie = res.headers.getSetCookie().find(c => c.startsWith('oauth_return_to='));
+    expect(returnToCookie).toContain('Max-Age=0');
   });
 
   it('clears oauth_state cookie on success', async () => {

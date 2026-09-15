@@ -2,11 +2,15 @@
 
 import { AuthProvider } from '@/hooks/use-auth';
 import { ThemeProvider } from '@/hooks/use-theme';
+import { PwaBootstrap } from '@/components/pwa-bootstrap';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
-      <AuthProvider>{children}</AuthProvider>
+      <AuthProvider>
+        <PwaBootstrap />
+        {children}
+      </AuthProvider>
     </ThemeProvider>
   );
 }
