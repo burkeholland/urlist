@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { recordPageView, recordLinkClick, hashVisitorId } from '@/lib/analytics';
 import { getList } from '@/lib/rtdb';
 import { getClientIp, checkRateLimit, RATE_LIMITS } from '@/lib/rate-limiter';
+import { isAnalyticsSurface } from '@/lib/embed';
 import { log } from '@/lib/logger';
 import type { TrackEventPayload } from '@/lib/types';
 
@@ -52,6 +53,13 @@ export async function POST(
   if (body.type === 'linkClick' && !body.linkId) {
     return NextResponse.json(
       { error: { code: 'INVALID_REQUEST', message: 'linkId is required for linkClick events.' } },
+      { status: 400 },
+    );
+  }
+
+  if (body.surface !== undefined && !isAnalyticsSurface(body.surface)) {
+    return NextResponse.json(
+      { error: { code: 'INVALID_REQUEST', message: 'surface must be "page" or "embed".' } },
       { status: 400 },
     );
   }

@@ -2,6 +2,7 @@ import { getDb } from './cosmos';
 import { nanoid } from 'nanoid';
 import type {
   AnalyticsEvent,
+  AnalyticsSurface,
   ListAnalytics,
   ListAnalyticsSummary,
   ListPerformance,
@@ -12,12 +13,14 @@ import type {
   LinkClickStats,
 } from './types';
 
+const isEmbedEvent = (event: AnalyticsEvent) => event.surface === 'embed';
+
 // ── Record events ──
 
 export async function recordPageView(params: {
   slug: string;
   visitorId: string;
-  surface: 'page' | 'embed';
+  surface: AnalyticsSurface;
   referrer: string | null;
   utmSource: string | null;
   utmMedium: string | null;
@@ -44,7 +47,7 @@ export async function recordLinkClick(params: {
   slug: string;
   linkId: string;
   visitorId: string;
-  surface: 'page' | 'embed';
+  surface: AnalyticsSurface;
   referrer: string | null;
 }): Promise<void> {
   const db = getDb();
@@ -117,10 +120,10 @@ export async function getListAnalytics(
   const totalClicks = linkClicks.length;
   const clickThroughRate = totalViews > 0 ? totalClicks / totalViews : 0;
   const surfaceBreakdown = {
-    pageViews: pageViews.filter((event) => (event.surface ?? 'page') === 'page').length,
-    embedViews: pageViews.filter((event) => (event.surface ?? 'page') === 'embed').length,
-    pageClicks: linkClicks.filter((event) => (event.surface ?? 'page') === 'page').length,
-    embedClicks: linkClicks.filter((event) => (event.surface ?? 'page') === 'embed').length,
+    pageViews: pageViews.filter((event) => !isEmbedEvent(event)).length,
+    embedViews: pageViews.filter(isEmbedEvent).length,
+    pageClicks: linkClicks.filter((event) => !isEmbedEvent(event)).length,
+    embedClicks: linkClicks.filter(isEmbedEvent).length,
   };
 
   // Views over time (daily buckets)

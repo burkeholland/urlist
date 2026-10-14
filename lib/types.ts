@@ -71,7 +71,8 @@ export interface AnalyticsEvent {
   id: string;
   slug: string;
   type: AnalyticsEventType;
-  surface: AnalyticsSurface;
+  /** Missing on events recorded before embeds existed; treat those as direct page traffic. */
+  surface?: AnalyticsSurface;
   visitorId: string;
   referrer: string | null;
   timestamp: number;

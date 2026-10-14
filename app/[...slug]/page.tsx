@@ -38,9 +38,6 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   return {
     title,
     description,
-    alternates: {
-      canonical: `/${slug}`,
-    },
     robots: renderOptions.isEmbed ? { index: false, follow: false } : undefined,
     openGraph: renderOptions.isEmbed
       ? undefined

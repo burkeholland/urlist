@@ -34,7 +34,6 @@ describe('public page metadata', () => {
 
     expect(metadata.title).toBe('my-list embed — The Urlist');
     expect(metadata.robots).toEqual({ index: false, follow: false });
-    expect(metadata.alternates?.canonical).toBe('/my-list');
     expect(metadata.openGraph).toBeUndefined();
   });
 

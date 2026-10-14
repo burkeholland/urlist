@@ -95,6 +95,16 @@ describe('POST /api/lists/[listId]/analytics/events', () => {
     expect(body.error.message).toBe('linkId is required for linkClick events.');
   });
 
+  it('returns 400 for an unknown surface', async () => {
+    const req = createRequest({ type: 'pageView', surface: 'preview' });
+    const res = await POST(req, params);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('INVALID_REQUEST');
+    expect(body.error.message).toBe('surface must be "page" or "embed".');
+    expect(mockRecordPageView).not.toHaveBeenCalled();
+  });
+
   it('returns 204 and records pageView', async () => {
     const req = createRequest({ type: 'pageView', surface: 'embed', referrer: 'https://google.com', utmSource: 's', utmMedium: 'm', utmCampaign: 'c' });
     const res = await POST(req, params);
@@ -151,6 +161,13 @@ describe('POST /api/lists/[listId]/analytics/events', () => {
       visitorId: 'abc123hash',
       surface: 'embed',
     }));
+  });
+
+  it('defaults a linkClick without a surface to the direct page', async () => {
+    const req = createRequest({ type: 'linkClick', linkId: 'link1' });
+    const res = await POST(req, params);
+    expect(res.status).toBe(204);
+    expect(mockRecordLinkClick).toHaveBeenCalledWith(expect.objectContaining({ surface: 'page' }));
   });
 
   it('handles missing user-agent header', async () => {

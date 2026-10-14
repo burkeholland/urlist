@@ -15,6 +15,7 @@ export interface ShareNavigatorLike {
 }
 
 export interface LegacyCopyDocumentLike {
+  activeElement?: object | null;
   body: {
     appendChild(node: unknown): unknown;
     removeChild(node: unknown): unknown;
@@ -23,7 +24,9 @@ export interface LegacyCopyDocumentLike {
     value: string;
     setAttribute(name: string, value: string): void;
     style: { position: string; left: string; top: string };
+    focus?(options?: { preventScroll?: boolean }): void;
     select(): void;
+    setSelectionRange?(start: number, end: number): void;
   };
   execCommand?(command: 'copy'): boolean;
 }
@@ -57,13 +60,23 @@ export function legacyCopyToClipboard(
   textarea.style.position = 'fixed';
   textarea.style.left = '-9999px';
   textarea.style.top = '0';
+  const previouslyFocused = documentLike.activeElement as
+    | { focus?: (options?: { preventScroll?: boolean }) => void }
+    | null
+    | undefined;
   documentLike.body.appendChild(textarea);
+  textarea.focus?.({ preventScroll: true });
   textarea.select();
+  textarea.setSelectionRange?.(0, text.length);
 
   try {
     return documentLike.execCommand?.('copy') ?? false;
+  } catch {
+    return false;
   } finally {
     documentLike.body.removeChild(textarea);
+    // Selecting the textarea steals focus; hand it back so keyboard users keep their place.
+    previouslyFocused?.focus?.({ preventScroll: true });
   }
 }
 
@@ -75,8 +88,13 @@ export async function copyText(
   } = {},
 ): Promise<'clipboard' | 'fallback'> {
   if (supportsClipboardApi(options.navigatorLike)) {
-    await options.navigatorLike!.clipboard!.writeText(text);
-    return 'clipboard';
+    try {
+      await options.navigatorLike!.clipboard!.writeText(text);
+      return 'clipboard';
+    } catch {
+      // The Clipboard API can exist but still reject (permissions policy, unfocused document,
+      // Safari gesture rules), so fall through to the legacy path before giving up.
+    }
   }
 
   if (options.legacyCopy) {

@@ -5,7 +5,9 @@ import {
   EMBED_QUERY_VALUE,
   estimateEmbedHeight,
   getAdjacentPublicListViewMode,
+  getFirstSearchParam,
   getPublicRenderOptions,
+  isAnalyticsSurface,
   parseEmbedTheme,
   PUBLIC_LIST_VIEW_MODES,
   shouldBootstrapAuth,
@@ -71,6 +73,24 @@ describe('shouldTrackEmbedAnalytics', () => {
   });
 });
 
+describe('isAnalyticsSurface', () => {
+  it('accepts only the known surfaces', () => {
+    expect(isAnalyticsSurface('page')).toBe(true);
+    expect(isAnalyticsSurface('embed')).toBe(true);
+    expect(isAnalyticsSurface('preview')).toBe(false);
+    expect(isAnalyticsSurface(undefined)).toBe(false);
+    expect(isAnalyticsSurface(1)).toBe(false);
+  });
+});
+
+describe('getFirstSearchParam', () => {
+  it('returns the first value of repeated params', () => {
+    expect(getFirstSearchParam(['1', '2'])).toBe('1');
+    expect(getFirstSearchParam('1')).toBe('1');
+    expect(getFirstSearchParam(undefined)).toBeUndefined();
+  });
+});
+
 describe('buildEmbedUrl', () => {
   it('adds embed params and omits preview by default', () => {
     expect(buildEmbedUrl('https://urlist.test/my-list', 'dark')).toBe(
@@ -110,6 +130,10 @@ describe('getAdjacentPublicListViewMode', () => {
 
   it('ignores unrelated keys', () => {
     expect(getAdjacentPublicListViewMode('list', 'Enter')).toBeNull();
+  });
+
+  it('ignores an unknown current tab', () => {
+    expect(getAdjacentPublicListViewMode('bogus' as never, 'ArrowRight')).toBeNull();
   });
 });
 

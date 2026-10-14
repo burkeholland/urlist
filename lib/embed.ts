@@ -1,3 +1,5 @@
+import type { AnalyticsSurface } from '@/lib/types';
+
 export const EMBED_QUERY_VALUE = '1';
 export const EMBED_RESIZE_MESSAGE_TYPE = 'urlist:embed:resize';
 export const EMBED_THEMES = ['system', 'light', 'dark'] as const;
@@ -38,6 +40,10 @@ export function shouldBootstrapAuth(search: string): boolean {
 
 export function shouldTrackEmbedAnalytics(options: PublicRenderOptions): boolean {
   return !(options.isEmbed && options.isPreview);
+}
+
+export function isAnalyticsSurface(value: unknown): value is AnalyticsSurface {
+  return value === 'page' || value === 'embed';
 }
 
 export function buildEmbedUrl(

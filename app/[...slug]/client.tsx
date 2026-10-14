@@ -8,9 +8,11 @@ import {
   buildEmbedUrl,
   createEmbedCode,
   EMBED_RESIZE_MESSAGE_TYPE,
+  EMBED_THEMES,
   estimateEmbedHeight,
   getAdjacentPublicListViewMode,
   PUBLIC_LIST_VIEW_MODES,
+  shouldTrackEmbedAnalytics,
 } from '@/lib/embed';
 import { copyText, legacyCopyToClipboard, shareContent, supportsWebShare } from '@/lib/share';
 import type { EmbedTheme, PublicListViewMode, PublicRenderOptions } from '@/lib/embed';
@@ -20,48 +22,6 @@ const QRCodeSVG = dynamic(
   () => import('qrcode.react').then((m) => ({ default: m.QRCodeSVG })),
   { ssr: false },
 );
-
-const LIGHT_EMBED_THEME = {
-  '--bg': '#f8fcff',
-  '--bg-gradient': 'linear-gradient(to bottom right, #ffffff, #f0f9ff, #f6fff8)',
-  '--bg-secondary': 'rgba(255, 255, 255, 0.7)',
-  '--surface': 'rgba(255, 255, 255, 0.92)',
-  '--surface-border': 'rgba(255, 255, 255, 0.72)',
-  '--accent': '#ff7f50',
-  '--accent-hover': '#e86f43',
-  '--link': '#0ea5e9',
-  '--link-hover': '#0284c7',
-  '--border': '#e0e4e8',
-  '--input-border': '#c0c6ce',
-  '--text': '#111827',
-  '--text-muted': '#6b7280',
-  '--mono-bg': 'rgba(255, 255, 255, 0.5)',
-  '--blue-bg': 'rgba(255, 127, 80, 0.08)',
-  '--danger': '#dc2626',
-  '--danger-hover': '#b91c1c',
-  '--success': '#16a34a',
-} as React.CSSProperties;
-
-const DARK_EMBED_THEME = {
-  '--bg': '#0f1117',
-  '--bg-gradient': 'linear-gradient(to bottom right, #0f1117, #121520, #101318)',
-  '--bg-secondary': 'rgba(30, 33, 43, 0.76)',
-  '--surface': 'rgba(30, 33, 43, 0.92)',
-  '--surface-border': 'rgba(55, 60, 75, 0.7)',
-  '--accent': '#ff9068',
-  '--accent-hover': '#ffab8a',
-  '--link': '#38bdf8',
-  '--link-hover': '#7dd3fc',
-  '--border': '#2a2e3a',
-  '--input-border': '#3a3f4e',
-  '--text': '#e5e7eb',
-  '--text-muted': '#9ca3af',
-  '--mono-bg': 'rgba(30, 33, 43, 0.5)',
-  '--blue-bg': 'rgba(255, 144, 104, 0.08)',
-  '--danger': '#ef4444',
-  '--danger-hover': '#f87171',
-  '--success': '#22c55e',
-} as React.CSSProperties;
 
 interface PublicListClientProps {
   list: ListWithLinks;
@@ -141,12 +101,6 @@ function icon(type: 'link' | 'share' | 'code' | 'list' | 'qr' | 'embed') {
   }
 }
 
-function getEmbedThemeStyle(theme: EmbedTheme): React.CSSProperties | undefined {
-  if (theme === 'light') return LIGHT_EMBED_THEME;
-  if (theme === 'dark') return DARK_EMBED_THEME;
-  return undefined;
-}
-
 export function PublicListClient({
   list,
   slug,
@@ -154,13 +108,15 @@ export function PublicListClient({
   renderOptions,
 }: PublicListClientProps) {
   const isEmbed = renderOptions.isEmbed;
+  const trackAnalytics = shouldTrackEmbedAnalytics(renderOptions);
   const [showBanner, setShowBanner] = useState(justPublished && !isEmbed);
   const [view, setView] = useState<PublicListViewMode>('list');
   const [publicUrl, setPublicUrl] = useState<string | null>(null);
-  const [announcement, setAnnouncement] = useState<string | null>(null);
-  const [selectedEmbedTheme, setSelectedEmbedTheme] = useState<EmbedTheme>(renderOptions.theme);
+  const [toast, setToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null);
+  const [embedTheme, setEmbedTheme] = useState<EmbedTheme>('system');
   const [previewHeight, setPreviewHeight] = useState(estimateEmbedHeight(list.links.length));
   const previewFrameRef = useRef<HTMLIFrameElement>(null);
+  const embedContentRef = useRef<HTMLDivElement>(null);
   const viewTabRefs = useRef<Record<PublicListViewMode, HTMLButtonElement | null>>({
     list: null,
     qr: null,
@@ -183,18 +139,6 @@ export function PublicListClient({
   }, [slug]);
 
   useEffect(() => {
-    if (isEmbed) {
-      setView('list');
-    }
-  }, [isEmbed]);
-
-  useEffect(() => {
-    if (isEmbed && renderOptions.theme !== selectedEmbedTheme) {
-      setSelectedEmbedTheme(renderOptions.theme);
-    }
-  }, [isEmbed, renderOptions.theme, selectedEmbedTheme]);
-
-  useEffect(() => {
     if (justPublished && publicUrl && !isEmbed) {
       try {
         const key = 'urlist-recent-publishes';
@@ -208,7 +152,7 @@ export function PublicListClient({
   }, [isEmbed, justPublished, publicUrl]);
 
   useEffect(() => {
-    if (isEmbed && renderOptions.isPreview) {
+    if (!trackAnalytics) {
       return;
     }
 
@@ -221,7 +165,7 @@ export function PublicListClient({
       utmMedium: params.get('utm_medium') || undefined,
       utmCampaign: params.get('utm_campaign') || undefined,
     });
-  }, [isEmbed, list.listId, renderOptions.isPreview]);
+  }, [isEmbed, list.listId, trackAnalytics]);
 
   useEffect(() => {
     if (showBanner) {
@@ -231,38 +175,40 @@ export function PublicListClient({
   }, [showBanner]);
 
   useEffect(() => {
-    if (!announcement) return;
+    if (!toast) return;
 
-    const timer = setTimeout(() => setAnnouncement(null), 3000);
+    const timer = setTimeout(() => setToast(null), toast.kind === 'error' ? 6000 : 3500);
     return () => clearTimeout(timer);
-  }, [announcement]);
+  }, [toast]);
 
   useEffect(() => {
-    if (!isEmbed) {
+    const content = embedContentRef.current;
+    if (!isEmbed || !content || window.parent === window) {
       return;
     }
 
+    // Measure the content box, not the document: the shell fills the iframe (min-height: 100vh),
+    // so the document height could never shrink back after the host resized the frame.
+    const shell = content.parentElement!;
     const publishHeight = () => {
-      const height = Math.ceil(document.documentElement.scrollHeight);
+      const styles = getComputedStyle(shell);
+      const height = Math.ceil(
+        content.getBoundingClientRect().height +
+          parseFloat(styles.paddingTop) +
+          parseFloat(styles.paddingBottom),
+      );
       window.parent.postMessage({ type: EMBED_RESIZE_MESSAGE_TYPE, height }, '*');
     };
 
     publishHeight();
 
     const resizeObserver = typeof ResizeObserver !== 'undefined'
-      ? new ResizeObserver(() => publishHeight())
+      ? new ResizeObserver(publishHeight)
       : null;
+    resizeObserver?.observe(content);
 
-    resizeObserver?.observe(document.body);
-    window.addEventListener('load', publishHeight);
-    window.addEventListener('resize', publishHeight);
-
-    return () => {
-      resizeObserver?.disconnect();
-      window.removeEventListener('load', publishHeight);
-      window.removeEventListener('resize', publishHeight);
-    };
-  }, [isEmbed, list.links.length]);
+    return () => resizeObserver?.disconnect();
+  }, [isEmbed]);
 
   useEffect(() => {
     if (isEmbed || view !== 'embed' || !publicUrl) {
@@ -284,12 +230,8 @@ export function PublicListClient({
     return () => window.removeEventListener('message', onMessage);
   }, [isEmbed, publicUrl, view]);
 
-  const announce = useCallback((message: string) => {
-    setAnnouncement(message);
-  }, []);
-
-  const selectView = useCallback((nextView: PublicListViewMode) => {
-    setView(nextView);
+  const notify = useCallback((message: string, kind: 'success' | 'error' = 'success') => {
+    setToast({ message, kind });
   }, []);
 
   const handleViewTabKeyDown = useCallback((currentView: PublicListViewMode, key: string) => {
@@ -308,27 +250,27 @@ export function PublicListClient({
         navigatorLike: navigator,
         legacyCopy: (text) => legacyCopyToClipboard(text, document),
       });
-      announce(successMessage);
-    } catch (error) {
-      announce(error instanceof Error ? error.message : 'Copy failed.');
+      notify(successMessage);
+    } catch {
+      notify('Could not copy automatically. Select the text and copy it manually.', 'error');
     }
-  }, [announce]);
+  }, [notify]);
 
-  const shareValue = useCallback(async (data: { title: string; text: string; url: string }, successMessage: string) => {
+  const shareValue = useCallback(async (data: { title: string; text: string; url: string }) => {
     try {
       await shareContent(navigator, data);
-      announce(successMessage);
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
+        // The visitor dismissed the share sheet, which is not an error.
         return;
       }
-      announce(error instanceof Error ? error.message : 'Share failed.');
+      await copyValue(data.url, 'Sharing is not available here, so the link was copied instead.');
     }
-  }, [announce]);
+  }, [copyValue]);
 
   const handleLinkClick = useCallback(
     (linkId: string) => {
-      if (isEmbed && renderOptions.isPreview) {
+      if (!trackAnalytics) {
         return;
       }
 
@@ -339,7 +281,7 @@ export function PublicListClient({
         referrer: document.referrer || undefined,
       });
     },
-    [isEmbed, list.listId, renderOptions.isPreview],
+    [isEmbed, list.listId, trackAnalytics],
   );
 
   const collectionShareData = publicUrl
@@ -350,50 +292,47 @@ export function PublicListClient({
       }
     : null;
 
-  const previewUrl = publicUrl ? buildEmbedUrl(publicUrl, selectedEmbedTheme, { preview: true }) : null;
+  const copyCollectionUrl = () => {
+    if (publicUrl) void copyValue(publicUrl, 'Collection link copied.');
+  };
+  const shareCollection = () => {
+    if (collectionShareData) void shareValue(collectionShareData);
+  };
+
+  const previewUrl = publicUrl ? buildEmbedUrl(publicUrl, embedTheme, { preview: true }) : null;
   const embedCode = publicUrl
     ? createEmbedCode({
         publicUrl,
         slug,
-        theme: selectedEmbedTheme,
+        theme: embedTheme,
         initialHeight: estimateEmbedHeight(list.links.length),
       })
     : '';
 
-  const publicCards = [...list.links].sort((a, b) => {
-    const pinnedOrder = Number(b.pinned ?? false) - Number(a.pinned ?? false);
-    if (pinnedOrder !== 0) {
-      return pinnedOrder;
-    }
-    return a.position - b.position;
-  });
+  // The server already returns links pinned-first, then by position.
+  const publicCards = [...list.links].sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false));
 
   if (isEmbed) {
     return (
-      <main
-        className="embed-shell"
-        style={getEmbedThemeStyle(renderOptions.theme)}
-      >
-        <div className="embed-header">
-          <div>
-            <div className="embed-title">/{slug}</div>
-            {list.description && <p className="embed-desc">{list.description}</p>}
+      <main className="embed-shell" data-embed-theme={renderOptions.theme === 'system' ? undefined : renderOptions.theme}>
+        <div ref={embedContentRef}>
+          <div className="embed-header">
+            <div>
+              <h1 className="embed-title">/{slug}</h1>
+              {list.description && <p className="embed-desc">{list.description}</p>}
+            </div>
+            <div className="embed-meta">
+              {list.links.length} link{list.links.length !== 1 ? 's' : ''}
+            </div>
           </div>
-          <div className="embed-meta">
-            {list.links.length} link{list.links.length !== 1 ? 's' : ''}
-          </div>
-        </div>
 
-        <div className="pub-links" role="list" aria-label="Embedded link list">
-          {publicCards.map((link) => (
-            <LinkCard
-              key={link.id}
-              link={link}
-              isPublicView
-              publicMode="embed"
-              onPublicLinkClick={handleLinkClick}
-            />
-          ))}
+          <div className="pub-links" role="list" aria-label={`Links in /${slug}`}>
+            {publicCards.map((link) => (
+              <div key={link.id} role="listitem">
+                <LinkCard link={link} isPublicView onPublicLinkClick={handleLinkClick} />
+              </div>
+            ))}
+          </div>
         </div>
 
         <style jsx>{`
@@ -401,6 +340,7 @@ export function PublicListClient({
             min-height: 100vh;
             padding: 18px;
             background: var(--bg-gradient);
+            color: var(--text);
           }
 
           .embed-header {
@@ -417,7 +357,8 @@ export function PublicListClient({
             font-size: 18px;
             font-weight: 600;
             color: var(--text);
-            margin-bottom: 4px;
+            margin: 0 0 4px;
+            overflow-wrap: anywhere;
           }
 
           .embed-desc {
@@ -450,6 +391,7 @@ export function PublicListClient({
 
             .embed-header {
               flex-direction: column;
+              gap: 8px;
             }
           }
         `}</style>
@@ -470,18 +412,16 @@ export function PublicListClient({
             </div>
             <div className="pub-banner-actions">
               <button
+                type="button"
                 className="btn btn-outline btn-sm"
-                onClick={() => publicUrl && void copyValue(publicUrl, 'Collection link copied.')}
+                onClick={copyCollectionUrl}
                 disabled={!publicUrl}
               >
                 {icon('link')}
                 Copy link
               </button>
-              {nativeShareSupported && collectionShareData && (
-                <button
-                  className="btn btn-outline btn-sm"
-                  onClick={() => void shareValue(collectionShareData, 'Share sheet opened.')}
-                >
+              {nativeShareSupported && (
+                <button type="button" className="btn btn-outline btn-sm" onClick={shareCollection}>
                   {icon('share')}
                   Share
                 </button>
@@ -504,18 +444,16 @@ export function PublicListClient({
           <div className="pub-header-tools">
             <div className="share-toolbar" role="group" aria-label="Share collection">
               <button
+                type="button"
                 className="toolbar-btn"
-                onClick={() => publicUrl && void copyValue(publicUrl, 'Collection link copied.')}
+                onClick={copyCollectionUrl}
                 disabled={!publicUrl}
               >
                 {icon('link')}
                 Copy URL
               </button>
-              {nativeShareSupported && collectionShareData && (
-                <button
-                  className="toolbar-btn"
-                  onClick={() => void shareValue(collectionShareData, 'Share sheet opened.')}
-                >
+              {nativeShareSupported && (
+                <button type="button" className="toolbar-btn" onClick={shareCollection}>
                   {icon('share')}
                   Share
                 </button>
@@ -533,7 +471,7 @@ export function PublicListClient({
                   aria-controls={`view-panel-${mode}`}
                   tabIndex={view === mode ? 0 : -1}
                   className={`view-toggle-btn${view === mode ? ' active' : ''}`}
-                  onClick={() => selectView(mode)}
+                  onClick={() => setView(mode)}
                   onKeyDown={(event) => {
                     const nextView = getAdjacentPublicListViewMode(mode, event.key);
                     if (!nextView) {
@@ -555,10 +493,6 @@ export function PublicListClient({
           </div>
         </div>
 
-        <p className="share-status" aria-live="polite">
-          {announcement ?? '\u00a0'}
-        </p>
-
         <hr className="divider" />
 
         {view === 'list' ? (
@@ -573,23 +507,15 @@ export function PublicListClient({
                 key={link.id}
                 link={link}
                 isPublicView
-                publicMode="page"
-                canSharePublicLink={nativeShareSupported}
                 onPublicLinkClick={handleLinkClick}
-                onCopyPublicLink={(currentLink) => void copyValue(
-                  currentLink.url,
-                  `Copied ${currentLink.ogTitle || 'link'} URL.`,
-                )}
+                onCopyPublicLink={(currentLink) => void copyValue(currentLink.url, 'Link copied.')}
                 onSharePublicLink={
                   nativeShareSupported
-                    ? (currentLink) => void shareValue(
-                      {
-                        title: currentLink.ogTitle || currentLink.url,
-                        text: currentLink.ogDescription || `Open ${currentLink.url}`,
-                        url: currentLink.url,
-                      },
-                      'Share sheet opened.',
-                    )
+                    ? (currentLink) => void shareValue({
+                      title: currentLink.ogTitle || currentLink.url,
+                      text: currentLink.ogDescription || `Open ${currentLink.url}`,
+                      url: currentLink.url,
+                    })
                     : undefined
                 }
               />
@@ -634,16 +560,18 @@ export function PublicListClient({
               <div>
                 <h2>Read-only embed</h2>
                 <p>
-                  The iframe hides authenticated navigation, skips preview analytics, and resizes itself for up to{' '}
-                  {list.links.length} shared link{list.links.length === 1 ? '' : 's'}.
+                  Paste this iframe into a blog, docs page, or event site. It shows the list without
+                  sign-in or navigation, links open in a new tab, and it resizes to fit its content.
                 </p>
               </div>
               <div className="theme-toggle" role="group" aria-label="Embed theme">
-                {(['system', 'light', 'dark'] as const).map((theme) => (
+                {EMBED_THEMES.map((theme) => (
                   <button
                     key={theme}
-                    className={selectedEmbedTheme === theme ? 'active' : ''}
-                    onClick={() => setSelectedEmbedTheme(theme)}
+                    type="button"
+                    className={embedTheme === theme ? 'active' : ''}
+                    aria-pressed={embedTheme === theme}
+                    onClick={() => setEmbedTheme(theme)}
                   >
                     {theme[0].toUpperCase() + theme.slice(1)}
                   </button>
@@ -672,6 +600,7 @@ export function PublicListClient({
               <div className="embed-code-head">
                 <h3>Generated iframe code</h3>
                 <button
+                  type="button"
                   className="btn btn-outline btn-sm"
                   onClick={() => void copyValue(embedCode, 'Embed code copied.')}
                   disabled={!embedCode}
@@ -685,11 +614,18 @@ export function PublicListClient({
                 className="embed-code"
                 aria-label="Embed code"
                 value={embedCode}
+                onFocus={(event) => event.currentTarget.select()}
               />
             </div>
           </div>
         ) : null}
       </main>
+
+      <div className="share-toast-region" role="status" aria-live="polite">
+        {toast && (
+          <div className={`share-toast share-toast--${toast.kind}`}>{toast.message}</div>
+        )}
+      </div>
 
       <style jsx>{`
         .page {
@@ -746,6 +682,11 @@ export function PublicListClient({
           gap: 8px;
           flex-wrap: wrap;
           justify-content: flex-end;
+        }
+
+        .pub-banner-actions :global(.btn),
+        .embed-code-head :global(.btn) {
+          gap: 6px;
         }
 
         .pub-banner-label {
@@ -858,11 +799,33 @@ export function PublicListClient({
           color: var(--text);
         }
 
-        .share-status {
-          min-height: 20px;
-          margin: 0 0 8px;
-          color: var(--text-muted);
-          font-size: 13px;
+        .share-toast-region {
+          position: fixed;
+          left: 0;
+          right: 0;
+          bottom: 20px;
+          display: flex;
+          justify-content: center;
+          padding: 0 16px;
+          pointer-events: none;
+          z-index: 50;
+        }
+
+        .share-toast {
+          max-width: 420px;
+          padding: 10px 16px;
+          border-radius: var(--radius);
+          border: 1px solid var(--border);
+          background: var(--bg);
+          color: var(--text);
+          font-size: 14px;
+          line-height: 1.4;
+          box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
+        }
+
+        .share-toast--error {
+          border-color: var(--danger);
+          color: var(--danger);
         }
 
         .pub-links {

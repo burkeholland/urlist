@@ -166,10 +166,10 @@ describe('getListAnalytics', () => {
       analytics: [
         pv('e1', 'my-list', 'v1', t0, { referrer: 'https://www.twitter.com/post', country: 'US' }),
         pv('e2', 'my-list', 'v2', t0 + DAY, { surface: 'embed', referrer: 'https://linkedin.com/in/x', country: 'DE' }),
-        pv('e3', 'my-list', 'v1', t0 + DAY, {}),
+        pv('e3', 'my-list', 'v1', t0 + DAY, { surface: undefined }), // recorded before surfaces existed
         lc('e4', 'my-list', 'link-1', 'v1', t0 + DAY),
         lc('e5', 'my-list', 'link-1', 'v2', t0 + DAY, { surface: 'embed' }),
-        lc('e6', 'my-list', 'link-2', 'v1', t0 + DAY),
+        lc('e6', 'my-list', 'link-2', 'v1', t0 + DAY, { surface: undefined }),
         lc('e7', 'my-list', null as any, 'v1', t0 + DAY),
         pv('e8', 'other-list', 'v9', t0),
       ],

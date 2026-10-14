@@ -36,7 +36,7 @@ export default function EditComposePage({ params }: EditPageProps) {
   useEffect(() => {
     async function fetchList() {
       try {
-        const res = await fetch(`/api/lists/${listId}`, { credentials: 'include' });
+        const res = await fetch(`/api/lists/${listId}`);
         if (!res.ok) {
           setError('List not found.');
           return;
