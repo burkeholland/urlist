@@ -26,12 +26,15 @@ This version has breaking changes — APIs, conventions, and file structure may 
 1. **Compose**: User adds URLs on `app/app/compose/[listId]/page.tsx`
 2. **Publish**: `POST /api/lists` → rate-limit check → slug validation → atomic reserve-slug → create list/links/userList records
 3. **View**: Public URL `/{slug}` → `app/[...slug]/page.tsx` → `GET /api/lists/[listId]` with slug resolution
+   - Visibility is `public` (default, including legacy lists with no field), `unlisted` (noindex metadata), or `password-protected`.
+   - Password-protected lists show only an unlock form until `POST /api/lists/unlock` sets a 2-hour `list_access_<listId>` cookie (JWT bound to the list and its password version). Owners always have access. Every read path (page, metadata, list API, analytics events) checks access through `lib/list-access.ts`.
+   - Any future discovery surface (sitemap, search, featured or recent lists) must include only `public` lists.
 4. **Analytics**: Visitor IP+UA fingerprinted (SHA256) for non-owner views
 
 ### Database Layout
 
 **Cosmos DB containers:**
-- `lists`: List metadata (id, slug, description, ownerId, updatedAt)
+- `lists`: List metadata (id, slug, description, ownerId, visibility, passwordHash, passwordUpdatedAt, updatedAt). `passwordHash` is a scrypt hash that must never leave the server; read it only through `getListAccessRecord`.
 - `links`: Link records with OG metadata (id, listId, url, ogTitle, position, etc.)
 - `analytics`: Visitor events (listId, linkId, eventType, clientHash)
 - `slugs`: Slug → listId mapping (for collision prevention, slug reservation uses 409 conflict detection)
@@ -56,9 +59,11 @@ app/                      # Next.js App Router
 components/               # Reusable React components (all client-side)
 hooks/                    # Custom React hooks (useAuth, useDraft, etc.)
 lib/                      # Server utilities (no imports from components/)
-├── auth.ts               # JWT creation, token verification
+├── auth.ts               # JWT creation, token verification (sessions and list unlock tokens)
 ├── cosmos.ts             # Cosmos DB singleton
 ├── rtdb.ts               # Data access layer (CRUD operations)
+├── list-access.ts        # Who can view a password-protected list
+├── password.ts           # List password hashing (scrypt)
 ├── analytics.ts          # Event tracking and reporting
 ├── rate-limiter.ts       # Per-IP rate limiting (in-memory)
 ├── url.ts                # URL validation and normalization

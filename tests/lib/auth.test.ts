@@ -1,5 +1,15 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest';
-import { _resetSecretCache, createSessionToken, verifyAuth, getSessionUser, AuthError, requireAuth } from '@/lib/auth';
+import {
+  _resetSecretCache,
+  createListAccessToken,
+  createSessionToken,
+  verifyAuth,
+  getListAccessCookieName,
+  getSessionUser,
+  AuthError,
+  requireAuth,
+} from '@/lib/auth';
+import { decodeJwt } from 'jose';
 import { NextRequest } from 'next/server';
 
 // Set AUTH_SECRET for tests (must happen before any auth function call)
@@ -272,5 +282,25 @@ describe('JWT security boundaries', () => {
     const result = await verifyAuth(req);
     expect(result.authenticated).toBe(false);
     expect(result.error).toMatch(/malformed/i);
+  });
+});
+
+describe('list access tokens', () => {
+  it('names one cookie per list and neutralizes characters that are unsafe in cookie names', () => {
+    expect(getListAccessCookieName('AbC_12-xyz')).toBe('list_access_AbC_12-xyz');
+    expect(getListAccessCookieName('a;b=c d/../e')).toBe('list_access_a_b_c_d____e');
+  });
+
+  it('mints short-lived tokens bound to the list, the password version, and a dedicated audience', async () => {
+    const token = await createListAccessToken({ listId: 'list-1', passwordUpdatedAt: 42 });
+    const claims = decodeJwt(token);
+    expect(claims).toEqual(expect.objectContaining({ listId: 'list-1', passwordUpdatedAt: 42, aud: 'urlist:list-access' }));
+    expect(claims.exp! - claims.iat!).toBe(2 * 60 * 60);
+  });
+
+  it('cannot be used as a session token', async () => {
+    const token = await createListAccessToken({ listId: 'list-1', passwordUpdatedAt: 42 });
+    const res = await verifyAuth(createRequest({ cookie: token }));
+    expect(res.authenticated).toBe(false);
   });
 });

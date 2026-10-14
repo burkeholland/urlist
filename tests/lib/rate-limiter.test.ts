@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { checkRateLimit, getClientIp, RATE_LIMITS, _sweepStaleEntries } from '@/lib/rate-limiter';
+import { checkRateLimit, getClientIp, RATE_LIMITS, reserveRateLimit, _sweepStaleEntries } from '@/lib/rate-limiter';
 import { NextRequest } from 'next/server';
 
 // Access the internal store for cleanup
@@ -32,6 +32,64 @@ describe('getClientIp', () => {
   it('returns 0.0.0.0 when no header', () => {
     const req = createMockRequest();
     expect(getClientIp(req)).toBe('0.0.0.0');
+  });
+
+  it('returns 0.0.0.0 when x-forwarded-for has no usable entries', () => {
+    const req = createMockRequest({ 'x-forwarded-for': ' , ,' });
+    expect(getClientIp(req)).toBe('0.0.0.0');
+  });
+});
+
+describe('reserveRateLimit', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('counts a reservation immediately so parallel attempts cannot exceed the limit', () => {
+    const config = { endpoint: 'reserve-parallel', limit: 2, windowSeconds: 60 };
+    const attempts = [1, 2, 3].map(() => reserveRateLimit('client', config));
+    expect(attempts.map((a) => a.allowed)).toEqual([true, true, false]);
+    expect(attempts[2].retryAfter).toBe(60);
+  });
+
+  it('gives the slot back on release, and only once', () => {
+    const config = { endpoint: 'reserve-release', limit: 2, windowSeconds: 60 };
+    const first = reserveRateLimit('client', config);
+    reserveRateLimit('client', config);
+    expect(reserveRateLimit('client', config).allowed).toBe(false);
+
+    first.release();
+    first.release();
+    expect(reserveRateLimit('client', config).allowed).toBe(true);
+    expect(reserveRateLimit('client', config).allowed).toBe(false);
+  });
+
+  it('does not free a slot when a denied reservation is released', () => {
+    const config = { endpoint: 'reserve-denied', limit: 1, windowSeconds: 60 };
+    reserveRateLimit('client', config);
+    const denied = reserveRateLimit('client', config);
+    expect(denied.allowed).toBe(false);
+    denied.release();
+    expect(reserveRateLimit('client', config).allowed).toBe(false);
+  });
+
+  it('does not let a release from an old window free a slot in the new window', () => {
+    const config = { endpoint: 'reserve-rollover', limit: 1, windowSeconds: 60 };
+    const old = reserveRateLimit('client', config);
+    vi.advanceTimersByTime(61 * 1000);
+    expect(reserveRateLimit('client', config).allowed).toBe(true);
+    old.release();
+    expect(reserveRateLimit('client', config).allowed).toBe(false);
+  });
+
+  it('shares its counter with checkRateLimit for the same key and endpoint', async () => {
+    const config = { endpoint: 'reserve-shared', limit: 1, windowSeconds: 60 };
+    reserveRateLimit('client', config);
+    await expect(checkRateLimit('client', config)).resolves.toEqual({ allowed: false, retryAfter: 60 });
   });
 });
 
@@ -150,6 +208,7 @@ describe('RATE_LIMITS', () => {
     expect(RATE_LIMITS.ogScrape).toEqual({ endpoint: 'og-scrape', limit: 60, windowSeconds: 3600 });
     expect(RATE_LIMITS.slugCheck).toEqual({ endpoint: 'slug-check', limit: 120, windowSeconds: 3600 });
     expect(RATE_LIMITS.validationError).toEqual({ endpoint: 'validation-error', limit: 60, windowSeconds: 3600 });
+    expect(RATE_LIMITS.passwordUnlockClient).toEqual({ endpoint: 'password-unlock-client', limit: 100, windowSeconds: 900 });
     expect(RATE_LIMITS.passwordUnlock).toEqual({ endpoint: 'password-unlock', limit: 5, windowSeconds: 900 });
     expect(RATE_LIMITS.passwordUnlockList).toEqual({ endpoint: 'password-unlock-list', limit: 25, windowSeconds: 900 });
   });

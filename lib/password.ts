@@ -1,4 +1,13 @@
-import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'crypto';
+import { randomBytes, scrypt, timingSafeEqual } from 'crypto';
+import { promisify } from 'util';
+
+type ScryptOptions = { N: number; r: number; p: number; maxmem: number };
+const scryptAsync = promisify(scrypt) as (
+  password: string,
+  salt: Buffer,
+  keyLength: number,
+  options: ScryptOptions,
+) => Promise<Buffer>;
 
 const SCRYPT_VERSION = '1';
 const KEY_LENGTH = 64;
@@ -11,7 +20,7 @@ const SCRYPT_PARAMS = {
 
 export async function hashListPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
-  const derived = await scryptAsync(password, salt, KEY_LENGTH, SCRYPT_PARAMS);
+  const derived = await scryptAsync(normalizePassword(password), salt, KEY_LENGTH, SCRYPT_PARAMS);
   return [
     'scrypt',
     SCRYPT_VERSION,
@@ -31,37 +40,23 @@ export async function verifyListPassword(password: string, encodedHash: string):
   }
 
   const [, , nRaw, rRaw, pRaw, keyLengthRaw, saltRaw, hashRaw] = parts;
-  const N = Number(nRaw);
-  const r = Number(rRaw);
-  const p = Number(pRaw);
-  const keyLength = Number(keyLengthRaw);
-  if (!Number.isInteger(N) || !Number.isInteger(r) || !Number.isInteger(p) || !Number.isInteger(keyLength)) {
+  const [N, r, p, keyLength] = [nRaw, rRaw, pRaw, keyLengthRaw].map(Number);
+  if (![N, r, p, keyLength].every(Number.isInteger)) {
     return false;
   }
 
   try {
     const salt = Buffer.from(saltRaw, 'base64url');
     const expected = Buffer.from(hashRaw, 'base64url');
-    const actual = await scryptAsync(password, salt, keyLength, { N, r, p, maxmem: 64 * 1024 * 1024 });
+    const actual = await scryptAsync(normalizePassword(password), salt, keyLength, { N, r, p, maxmem: 64 * 1024 * 1024 });
     return expected.length === actual.length && timingSafeEqual(expected, actual);
   } catch {
     return false;
   }
 }
 
-function scryptAsync(
-  password: string,
-  salt: Buffer,
-  keyLength: number,
-  options: { N: number; r: number; p: number; maxmem: number },
-): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    scryptCallback(password, salt, keyLength, options, (error, derivedKey) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve(derivedKey);
-    });
-  });
+// NFKC (per NIST SP 800-63B) so the same password typed or pasted with different
+// Unicode compositions, like "é" vs "e" + combining accent, verifies consistently.
+function normalizePassword(password: string): string {
+  return password.normalize('NFKC');
 }

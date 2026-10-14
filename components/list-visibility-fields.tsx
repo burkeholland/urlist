@@ -9,6 +9,8 @@ interface ListVisibilityFieldsProps {
   onPasswordChange: (password: string) => void;
   passwordPlaceholder?: string;
   passwordHelp?: string;
+  /** Anonymous lists can only be public, so the other options are disabled. */
+  signedOut?: boolean;
 }
 
 const OPTIONS: Array<{ value: ListVisibility; title: string; detail: string }> = [
@@ -24,29 +26,40 @@ export function ListVisibilityFields({
   onPasswordChange,
   passwordPlaceholder = 'At least 8 characters',
   passwordHelp = 'Passwords are hashed before storage and are never shown again.',
+  signedOut = false,
 }: ListVisibilityFieldsProps) {
   return (
     <fieldset className="visibility-fieldset">
       <legend className="label">Visibility</legend>
       <div className="visibility-options">
-        {OPTIONS.map((option) => (
-          <label key={option.value} className={`visibility-option${visibility === option.value ? ' selected' : ''}`}>
-            <input
-              type="radio"
-              name="visibility"
-              value={option.value}
-              checked={visibility === option.value}
-              onChange={() => onVisibilityChange(option.value)}
-            />
-            <span>
-              <strong>{option.title}</strong>
-              <small>{option.detail}</small>
-            </span>
-          </label>
-        ))}
+        {OPTIONS.map((option) => {
+          const disabled = signedOut && option.value !== 'public';
+          return (
+            <label
+              key={option.value}
+              className={`visibility-option${visibility === option.value ? ' selected' : ''}${disabled ? ' disabled' : ''}`}
+            >
+              <input
+                type="radio"
+                name="visibility"
+                value={option.value}
+                checked={visibility === option.value}
+                disabled={disabled}
+                onChange={() => onVisibilityChange(option.value)}
+              />
+              <span>
+                <strong>{option.title}</strong>
+                <small>{option.detail}</small>
+              </span>
+            </label>
+          );
+        })}
       </div>
+      {signedOut && (
+        <p className="small muted signed-out-note">Sign in to publish unlisted or password-protected lists.</p>
+      )}
 
-      {visibility === 'password-protected' && (
+      {visibility === 'password-protected' && !signedOut && (
         <div className="password-field">
           <label htmlFor="list-password" className="label">List password</label>
           <input
@@ -85,6 +98,13 @@ export function ListVisibilityFields({
         .visibility-option.selected {
           border-color: var(--accent);
           background: var(--blue-bg);
+        }
+        .visibility-option.disabled {
+          cursor: not-allowed;
+          opacity: 0.55;
+        }
+        .signed-out-note {
+          margin: 8px 0 0;
         }
         .visibility-option input {
           margin-top: 3px;

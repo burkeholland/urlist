@@ -1,65 +1,64 @@
 import type { NextRequest } from 'next/server';
-import { getListAccessCookieName, verifyAuth, verifyListAccessToken, verifySessionToken } from './auth';
-import type { ListRecord, ListVisibility } from './types';
-
-export const DEFAULT_LIST_VISIBILITY: ListVisibility = 'public';
+import {
+  getListAccessCookieName,
+  SESSION_COOKIE_NAME,
+  verifyAuth,
+  verifyListAccessToken,
+  verifySessionToken,
+} from './auth';
+import type { ListAccessRecord } from './rtdb';
+import type { ListRecord } from './types';
 
 type CookieReader = {
   get(name: string): { value: string } | undefined;
 };
 
-export function getEffectiveVisibility(list: Pick<ListRecord, 'visibility'> | { visibility?: ListVisibility | null }): ListVisibility {
-  return list.visibility ?? DEFAULT_LIST_VISIBILITY;
+type AccessTarget = Pick<ListAccessRecord, 'passwordUpdatedAt'> & {
+  list: Pick<ListRecord, 'visibility' | 'ownerId'>;
+};
+
+// Lists saved before visibility existed have no field and stay public.
+export function listRequiresPassword(list: Pick<ListRecord, 'visibility'>): boolean {
+  return list.visibility === 'password-protected';
 }
 
-export function listRequiresPassword(list: Pick<ListRecord, 'visibility' | 'hasPassword'>): boolean {
-  void list.hasPassword;
-  return getEffectiveVisibility(list) === 'password-protected';
-}
-
-export async function requestOwnsList(request: NextRequest, list: Pick<ListRecord, 'ownerId'>): Promise<boolean> {
-  if (!list.ownerId) return false;
-  const authResult = await verifyAuth(request);
-  return authResult.authenticated && authResult.uid === list.ownerId;
-}
-
-export async function cookieStoreOwnsList(
-  cookieStore: CookieReader,
-  list: Pick<ListRecord, 'ownerId'>,
+// Owners always pass; everyone else needs an unlock token minted for the current password.
+async function hasListAccess(
+  listId: string,
+  target: AccessTarget,
+  getViewerUid: () => Promise<string | null>,
+  accessToken: string | undefined,
 ): Promise<boolean> {
-  if (!list.ownerId) return false;
-  const sessionCookie = cookieStore.get('session')?.value;
-  if (!sessionCookie) return false;
-  const authResult = await verifySessionToken(sessionCookie);
-  return authResult.authenticated && authResult.uid === list.ownerId;
+  if (!listRequiresPassword(target.list)) return true;
+  if (target.list.ownerId && (await getViewerUid()) === target.list.ownerId) return true;
+  return verifyListAccessToken(accessToken, listId, target.passwordUpdatedAt);
 }
 
-export async function requestHasListAccess(
+export function requestHasListAccess(
   request: NextRequest,
   listId: string,
-  list: Pick<ListRecord, 'visibility' | 'hasPassword' | 'ownerId'>,
-  passwordUpdatedAt: number,
+  target: AccessTarget,
 ): Promise<boolean> {
-  if (!listRequiresPassword(list)) return true;
-  if (await requestOwnsList(request, list)) return true;
-  return verifyListAccessToken(
-    request.cookies.get(getListAccessCookieName(listId))?.value,
+  return hasListAccess(
     listId,
-    passwordUpdatedAt,
+    target,
+    async () => (await verifyAuth(request)).uid,
+    request.cookies.get(getListAccessCookieName(listId))?.value,
   );
 }
 
-export async function cookieStoreHasListAccess(
+export function cookieStoreHasListAccess(
   cookieStore: CookieReader,
   listId: string,
-  list: Pick<ListRecord, 'visibility' | 'hasPassword' | 'ownerId'>,
-  passwordUpdatedAt: number,
+  target: AccessTarget,
 ): Promise<boolean> {
-  if (!listRequiresPassword(list)) return true;
-  if (await cookieStoreOwnsList(cookieStore, list)) return true;
-  return verifyListAccessToken(
-    cookieStore.get(getListAccessCookieName(listId))?.value,
+  return hasListAccess(
     listId,
-    passwordUpdatedAt,
+    target,
+    async () => {
+      const sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+      return sessionToken ? (await verifySessionToken(sessionToken)).uid : null;
+    },
+    cookieStore.get(getListAccessCookieName(listId))?.value,
   );
 }

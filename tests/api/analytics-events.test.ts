@@ -2,8 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
 vi.mock('@/lib/rtdb', () => ({
-  getList: vi.fn(),
-  getListPasswordAccess: vi.fn(),
+  getListAccessRecord: vi.fn(),
 }));
 vi.mock('@/lib/analytics', () => ({
   recordPageView: vi.fn().mockResolvedValue(undefined),
@@ -18,12 +17,11 @@ vi.mock('@/lib/rate-limiter', () => ({
 vi.mock('@/lib/logger', () => ({ log: vi.fn() }));
 
 import { POST } from '@/app/api/lists/[listId]/analytics/events/route';
-import { getList, getListPasswordAccess } from '@/lib/rtdb';
+import { getListAccessRecord } from '@/lib/rtdb';
 import { recordPageView, recordLinkClick } from '@/lib/analytics';
 import { checkRateLimit } from '@/lib/rate-limiter';
 
-const mockGetList = getList as ReturnType<typeof vi.fn>;
-const mockGetListPasswordAccess = getListPasswordAccess as ReturnType<typeof vi.fn>;
+const mockGetListAccessRecord = getListAccessRecord as ReturnType<typeof vi.fn>;
 const mockRecordPageView = recordPageView as ReturnType<typeof vi.fn>;
 const mockRecordLinkClick = recordLinkClick as ReturnType<typeof vi.fn>;
 const mockCheckRateLimit = checkRateLimit as ReturnType<typeof vi.fn>;
@@ -42,13 +40,12 @@ const params = { params: Promise.resolve({ listId: 'list123' }) };
 describe('POST /api/lists/[listId]/analytics/events', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetList.mockResolvedValue(mockList);
-    mockGetListPasswordAccess.mockResolvedValue({ visibility: 'public', passwordHash: null, passwordUpdatedAt: 0 });
+    mockGetListAccessRecord.mockResolvedValue({ list: mockList, passwordHash: null, passwordUpdatedAt: 0 });
     mockCheckRateLimit.mockResolvedValue({ allowed: true });
   });
 
   it('returns 404 when list does not exist', async () => {
-    mockGetList.mockResolvedValue(null);
+    mockGetListAccessRecord.mockResolvedValue(null);
     const req = createRequest({ type: 'pageView' });
     const res = await POST(req, params);
     expect(res.status).toBe(404);
@@ -154,8 +151,11 @@ describe('POST /api/lists/[listId]/analytics/events', () => {
   });
 
   it('does not record analytics for locked password-protected lists', async () => {
-    mockGetList.mockResolvedValue({ ...mockList, visibility: 'password-protected', hasPassword: true });
-    mockGetListPasswordAccess.mockResolvedValue({ visibility: 'password-protected', passwordHash: 'hash', passwordUpdatedAt: 123 });
+    mockGetListAccessRecord.mockResolvedValue({
+      list: { ...mockList, visibility: 'password-protected', hasPassword: true },
+      passwordHash: 'hash',
+      passwordUpdatedAt: 123,
+    });
     const req = createRequest({ type: 'pageView' });
     const res = await POST(req, params);
     expect(res.status).toBe(204);

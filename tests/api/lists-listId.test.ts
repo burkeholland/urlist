@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { DELETE, GET, PATCH } from '@/app/api/lists/[listId]/route';
 import { AuthError, requireAuth, verifyAuth } from '@/lib/auth';
-import { deleteList, getList, getListPasswordAccess, getListWithLinks, updateList } from '@/lib/rtdb';
+import { deleteList, getLinks, getList, getListAccessRecord, updateList } from '@/lib/rtdb';
 
 vi.mock('@/lib/auth', () => ({
+  SESSION_COOKIE_NAME: 'session',
   verifyAuth: vi.fn(),
+  verifySessionToken: vi.fn(),
   requireAuth: vi.fn(),
   getListAccessCookieName: vi.fn((listId: string) => `list_access_${listId}`),
   verifyListAccessToken: vi.fn().mockResolvedValue(false),
@@ -18,7 +20,7 @@ vi.mock('@/lib/auth', () => ({
     }
   },
 }));
-vi.mock('@/lib/rtdb', () => ({ getList: vi.fn(), getListPasswordAccess: vi.fn(), getListWithLinks: vi.fn(), updateList: vi.fn(), deleteList: vi.fn() }));
+vi.mock('@/lib/rtdb', () => ({ getList: vi.fn(), getListAccessRecord: vi.fn(), getLinks: vi.fn(), updateList: vi.fn(), deleteList: vi.fn() }));
 vi.mock('@/lib/logger', () => ({ log: vi.fn() }));
 
 const ctx = { params: Promise.resolve({ listId: 'list-1' }) };
@@ -36,33 +38,40 @@ describe('GET /api/lists/[listId]', () => {
   });
 
   it('returns 404 when list is not found', async () => {
-    vi.mocked(getList).mockResolvedValue(null);
-    vi.mocked(getListWithLinks).mockResolvedValue(null);
-    const res = await json(await GET(req('GET'), ctx));
+    vi.mocked(getListAccessRecord).mockResolvedValue(null);
+    const response = await GET(req('GET'), ctx);
+    const res = await json(response);
     expect(res.status).toBe(404);
     expect(res.body.error.code).toBe('LIST_NOT_FOUND');
     expect(res.body.error.message).toBe('No list exists with this ID.');
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
   });
 
   it('returns list with links when found', async () => {
-    vi.mocked(getList).mockResolvedValue(list);
-    vi.mocked(getListPasswordAccess).mockResolvedValue({ visibility: 'public', passwordHash: null, passwordUpdatedAt: 0 });
-    vi.mocked(getListWithLinks).mockResolvedValue({ listId: 'list-1', ...list, links: [] });
+    vi.mocked(getListAccessRecord).mockResolvedValue({ list: { ...list, visibility: 'public', hasPassword: false }, passwordHash: null, passwordUpdatedAt: 0 });
+    vi.mocked(getLinks).mockResolvedValue([]);
     const response = await GET(req('GET'), ctx);
     const res = await json(response);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store');
     expect(response.headers.get('Vary')).toBe('Cookie, Authorization');
     expect(res.status).toBe(200);
-    expect(res.body.listId).toBe('list-1');
+    expect(res.body).toEqual({ listId: 'list-1', ...list, visibility: 'public', hasPassword: false, links: [] });
   });
 
   it('does not return protected list data without unlock access', async () => {
-    vi.mocked(getList).mockResolvedValue({ ...list, visibility: 'password-protected', hasPassword: true });
-    vi.mocked(getListPasswordAccess).mockResolvedValue({ visibility: 'password-protected', passwordHash: 'hash', passwordUpdatedAt: 123 });
-    const res = await json(await GET(req('GET'), ctx));
-    expect(res.status).toBe(403);
-    expect(res.body.error.code).toBe('ACCESS_REQUIRED');
-    expect(getListWithLinks).not.toHaveBeenCalled();
+    vi.mocked(getListAccessRecord).mockResolvedValue({
+      list: { ...list, description: 'hidden', visibility: 'password-protected', hasPassword: true },
+      passwordHash: 'stored-hash',
+      passwordUpdatedAt: 123,
+    });
+    const response = await GET(req('GET'), ctx);
+    const text = await response.text();
+    expect(response.status).toBe(403);
+    expect(JSON.parse(text).error.code).toBe('ACCESS_REQUIRED');
+    expect(text).not.toContain('hidden');
+    expect(text).not.toContain('stored-hash');
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(getLinks).not.toHaveBeenCalled();
   });
 });
 
@@ -185,6 +194,28 @@ describe('PATCH /api/lists/[listId]', () => {
       passwordHash: null,
       passwordUpdatedAt: null,
     }));
+  });
+
+  it('keeps the current password, and existing unlock cookies, when re-saving a protected list', async () => {
+    vi.mocked(getList).mockResolvedValue({ ...list, visibility: 'password-protected', hasPassword: true });
+    const res = await json(await PATCH(req('PATCH', { updatedAt: 10, visibility: 'password-protected', description: 'edited' }), ctx));
+    expect(res.status).toBe(200);
+    const update = vi.mocked(updateList).mock.calls[0][0];
+    expect(update.passwordHash).toBeUndefined();
+    expect(update.passwordUpdatedAt).toBeUndefined();
+  });
+
+  it('rotates the password without visibility in the body and never stores or logs the plaintext', async () => {
+    const { log } = await import('@/lib/logger');
+    vi.mocked(getList).mockResolvedValue({ ...list, visibility: 'password-protected', hasPassword: true });
+    const res = await json(await PATCH(req('PATCH', { updatedAt: 10, password: 'rotated-secret' }), ctx));
+    expect(res.status).toBe(200);
+    const update = vi.mocked(updateList).mock.calls[0][0];
+    expect(update.visibility).toBeUndefined();
+    expect(update.passwordHash).toMatch(/^scrypt\$/);
+    expect(update.passwordUpdatedAt).toEqual(expect.any(Number));
+    expect(JSON.stringify(update)).not.toContain('rotated-secret');
+    expect(JSON.stringify(vi.mocked(log).mock.calls)).not.toContain('rotated-secret');
   });
 
   it('returns 400 for schema-invalid body that includes updatedAt', async () => {

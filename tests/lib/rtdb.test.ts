@@ -7,9 +7,8 @@ import {
   deleteSlug,
   getLinks,
   getList,
-  getListPasswordAccess,
+  getListAccessRecord,
   getListsWithLinks,
-  getListWithLinks,
   getUserListIds,
   isSlugAvailable,
   reserveSlug,
@@ -169,12 +168,30 @@ describe('rtdb', () => {
     expect(await getList('list-1')).toEqual({ slug: 's', description: '', ownerId: 'u1', visibility: 'password-protected', hasPassword: true, createdAt: 1, updatedAt: 2 });
   });
 
-  it('getListPasswordAccess reads password fields for access checks only', async () => {
+  it('getListAccessRecord returns the safe list and private password fields from one read', async () => {
     const db = createMockDb({
       lists: [{ id: 'list-1', slug: 's', description: '', ownerId: 'u1', visibility: 'password-protected', passwordHash: 'secret-hash', passwordUpdatedAt: 10, createdAt: 1, updatedAt: 2 }],
     });
     vi.mocked(getDb).mockReturnValue(db as any);
-    expect(await getListPasswordAccess('list-1')).toEqual({ visibility: 'password-protected', passwordHash: 'secret-hash', passwordUpdatedAt: 10 });
+    const record = await getListAccessRecord('list-1');
+    expect(record).toEqual({
+      list: { slug: 's', description: '', ownerId: 'u1', visibility: 'password-protected', hasPassword: true, createdAt: 1, updatedAt: 2 },
+      passwordHash: 'secret-hash',
+      passwordUpdatedAt: 10,
+    });
+    expect(JSON.stringify(record!.list)).not.toContain('secret-hash');
+    expect(db.container).toHaveBeenCalledTimes(1);
+  });
+
+  it('getListAccessRecord treats legacy lists without visibility fields as public', async () => {
+    const db = createMockDb({ lists: [{ id: 'list-1', slug: 's', description: '', ownerId: null, createdAt: 1, updatedAt: 2 }] });
+    vi.mocked(getDb).mockReturnValue(db as any);
+    expect(await getListAccessRecord('list-1')).toEqual({
+      list: { slug: 's', description: '', ownerId: null, visibility: 'public', hasPassword: false, createdAt: 1, updatedAt: 2 },
+      passwordHash: null,
+      passwordUpdatedAt: 0,
+    });
+    await expect(getListAccessRecord('missing')).resolves.toBeNull();
   });
 
   it('getLinks returns links sorted by pinned then position', async () => {
@@ -188,17 +205,6 @@ describe('rtdb', () => {
     vi.mocked(getDb).mockReturnValue(db as any);
     const links = await getLinks('list-1');
     expect(links[0].pinned).toBe(false);
-  });
-
-  it('getListWithLinks combines list and links', async () => {
-    const db = createMockDb({
-      lists: [{ id: 'list-1', slug: 's', description: '', ownerId: 'u1', createdAt: 1, updatedAt: 2 }],
-      links: [fullLink('a', 0)],
-    });
-    vi.mocked(getDb).mockReturnValue(db as any);
-    const result = await getListWithLinks('list-1');
-    expect(result?.listId).toBe('list-1');
-    expect(result?.links).toHaveLength(1);
   });
 
   it('createList creates list, links, and userList records', async () => {
@@ -288,12 +294,6 @@ describe('rtdb', () => {
     expect(db.data.get('slugs')!.size).toBe(0);
     expect(db.data.get('links')!.size).toBe(0);
     expect(db.data.get('userLists')!.size).toBe(0);
-  });
-
-  it('getListWithLinks returns null when the list does not exist', async () => {
-    const db = createMockDb({ links: [fullLink('a', 0)] });
-    vi.mocked(getDb).mockReturnValue(db as any);
-    await expect(getListWithLinks('missing')).resolves.toBeNull();
   });
 
   it('reserveSlug throws for invalid slug format', async () => {

@@ -13,6 +13,9 @@ export const RATE_LIMITS = {
   ogScrape: { endpoint: 'og-scrape', limit: 60, windowSeconds: 3600 },
   slugCheck: { endpoint: 'slug-check', limit: 120, windowSeconds: 3600 },
   validationError: { endpoint: 'validation-error', limit: 60, windowSeconds: 3600 },
+  // All unlock requests per client, including successes, to cap the scrypt work one client can trigger.
+  passwordUnlockClient: { endpoint: 'password-unlock-client', limit: 100, windowSeconds: 15 * 60 },
+  // Failed unlock attempts per client per list, and per list across all clients.
   passwordUnlock: { endpoint: 'password-unlock', limit: 5, windowSeconds: 15 * 60 },
   passwordUnlockList: { endpoint: 'password-unlock-list', limit: 25, windowSeconds: 15 * 60 },
 } satisfies Record<string, RateLimitConfig>;
@@ -59,23 +62,47 @@ export function _sweepStaleEntries(): void {
 
 setInterval(_sweepStaleEntries, 5 * 60 * 1000).unref();
 
+export interface RateLimitReservation {
+  allowed: boolean;
+  retryAfter?: number;
+  /** Gives the reserved slot back, e.g. when only failed attempts should count. Safe to call twice. */
+  release: () => void;
+}
+
+/**
+ * Counts one attempt immediately so concurrent requests cannot all slip under the limit.
+ * Callers that only want to limit failures release the slot once the attempt succeeds.
+ */
+export function reserveRateLimit(key: string, config: RateLimitConfig): RateLimitReservation {
+  const windowKey = getWindowKey(config.windowSeconds);
+  const storeKey = config.endpoint + ':' + hashIp(key) + ':' + windowKey;
+
+  let entry = store.get(storeKey);
+  if (!entry) {
+    entry = { count: 0, windowKey, createdAt: Math.floor(Date.now() / 1000) };
+    store.set(storeKey, entry);
+  }
+  if (entry.count >= config.limit) {
+    return { allowed: false, retryAfter: config.windowSeconds, release: () => {} };
+  }
+
+  entry.count++;
+  const reserved = entry;
+  let released = false;
+  return {
+    allowed: true,
+    release: () => {
+      if (released) return;
+      released = true;
+      reserved.count--;
+    },
+  };
+}
+
 export async function checkRateLimit(
   ip: string,
   config: RateLimitConfig,
 ): Promise<{ allowed: boolean; retryAfter?: number }> {
-  const ipHash = hashIp(ip);
-  const windowKey = getWindowKey(config.windowSeconds);
-  const storeKey = config.endpoint + ':' + ipHash + ':' + windowKey;
-
-  const entry = store.get(storeKey);
-  if (entry && entry.windowKey === windowKey) {
-    if (entry.count >= config.limit) {
-      return { allowed: false, retryAfter: config.windowSeconds };
-    }
-    entry.count++;
-    return { allowed: true };
-  }
-
-  store.set(storeKey, { count: 1, windowKey, createdAt: Math.floor(Date.now() / 1000) });
-  return { allowed: true };
+  const { allowed, retryAfter } = reserveRateLimit(ip, config);
+  return allowed ? { allowed } : { allowed, retryAfter };
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { recordPageView, recordLinkClick, hashVisitorId } from '@/lib/analytics';
 import { requestHasListAccess } from '@/lib/list-access';
-import { getList, getListPasswordAccess } from '@/lib/rtdb';
+import { getListAccessRecord } from '@/lib/rtdb';
 import { getClientIp, checkRateLimit, RATE_LIMITS } from '@/lib/rate-limiter';
 import { log } from '@/lib/logger';
 import type { TrackEventPayload } from '@/lib/types';
@@ -13,16 +13,17 @@ export async function POST(
   const { listId } = await params;
 
   // Verify list exists
-  const list = await getList(listId);
-  const passwordAccess = list ? await getListPasswordAccess(listId) : null;
-  if (!list || !passwordAccess) {
+  const record = await getListAccessRecord(listId);
+  if (!record) {
     return NextResponse.json(
       { error: { code: 'LIST_NOT_FOUND', message: 'No list exists with this ID.' } },
       { status: 404 },
     );
   }
+  const { list } = record;
 
-  if (!(await requestHasListAccess(request, listId, list, passwordAccess.passwordUpdatedAt))) {
+  // Locked visitors get the same empty 204 as a recorded event, so this endpoint reveals nothing.
+  if (!(await requestHasListAccess(request, listId, record))) {
     return new NextResponse(null, { status: 204 });
   }
 

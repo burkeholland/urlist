@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth, requireAuth, AuthError } from '@/lib/auth';
 import { requestHasListAccess } from '@/lib/list-access';
-import { getList, getListPasswordAccess, getListWithLinks, updateList, deleteList } from '@/lib/rtdb';
+import { getList, getListAccessRecord, getLinks, updateList, deleteList } from '@/lib/rtdb';
 import { normalizeUrl, isValidHttpUrl } from '@/lib/url';
 import { generateLinkId } from '@/lib/slug';
 import { log } from '@/lib/logger';
@@ -24,17 +24,16 @@ export async function GET(
   { params }: { params: Promise<{ listId: string }> },
 ) {
   const { listId } = await params;
-  const list = await getList(listId);
-  const passwordAccess = list ? await getListPasswordAccess(listId) : null;
+  const record = await getListAccessRecord(listId);
 
-  if (!list || !passwordAccess) {
+  if (!record) {
     return NextResponse.json(
       { error: { code: 'LIST_NOT_FOUND', message: 'No list exists with this ID.' } },
       { status: 404, headers: ACCESS_CONTROL_HEADERS },
     );
   }
 
-  const allowed = await requestHasListAccess(request, listId, list, passwordAccess.passwordUpdatedAt);
+  const allowed = await requestHasListAccess(request, listId, record);
   if (!allowed) {
     return NextResponse.json(
       { error: { code: 'ACCESS_REQUIRED', message: 'Unlock this list to view it.' } },
@@ -42,16 +41,8 @@ export async function GET(
     );
   }
 
-  const listWithLinks = await getListWithLinks(listId);
-
-  if (!listWithLinks) {
-    return NextResponse.json(
-      { error: { code: 'LIST_NOT_FOUND', message: 'No list exists with this ID.' } },
-      { status: 404, headers: ACCESS_CONTROL_HEADERS },
-    );
-  }
-
-  return NextResponse.json(listWithLinks, { headers: ACCESS_CONTROL_HEADERS });
+  const links = await getLinks(listId);
+  return NextResponse.json({ listId, ...record.list, links }, { headers: ACCESS_CONTROL_HEADERS });
 }
 
 export async function PATCH(

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, use } from 'react';
+import { useEffect, useState, useCallback, useRef, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { NavHeader } from '@/components/nav-header';
 import { UrlInput } from '@/components/url-input';
@@ -27,6 +27,9 @@ export default function EditComposePage({ params }: EditPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [visibility, setVisibility] = useState<ListVisibility>('public');
   const [password, setPassword] = useState('');
+  // The list is refetched whenever links change, so only seed visibility once;
+  // otherwise an unsaved switch to "Password" would silently revert before saving.
+  const visibilitySeeded = useRef(false);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -46,7 +49,10 @@ export default function EditComposePage({ params }: EditPageProps) {
         }
         const data: ListWithLinks = await res.json();
         setListData(data);
-        setVisibility(data.visibility ?? 'public');
+        if (!visibilitySeeded.current) {
+          visibilitySeeded.current = true;
+          setVisibility(data.visibility ?? 'public');
+        }
 
         // Only populate draft if draft is empty (not previously saved)
         if (loaded && links.length === 0) {
@@ -167,6 +173,11 @@ export default function EditComposePage({ params }: EditPageProps) {
       setSaving(false);
     }
   };
+
+  // A new password must meet the minimum; leaving it blank keeps the current one, if there is one.
+  const passwordInvalid = visibility === 'password-protected'
+    && (password ? password.length < 8 : !listData?.hasPassword);
+  const saveDisabled = links.length === 0 || saving || passwordInvalid;
 
   if (authLoading || fetching || !loaded) {
     return (
@@ -303,9 +314,9 @@ export default function EditComposePage({ params }: EditPageProps) {
         <div className="compose-actions">
           <button
             onClick={handleSave}
-            disabled={links.length === 0 || saving || (visibility === 'password-protected' && !listData?.hasPassword && password.length < 8)}
+            disabled={saveDisabled}
             className="btn btn-primary"
-            style={links.length === 0 || saving || (visibility === 'password-protected' && !listData?.hasPassword && password.length < 8) ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+            style={saveDisabled ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
           >
             {saving ? 'Saving…' : 'Save'}
           </button>

@@ -151,6 +151,12 @@ export async function POST(request: NextRequest) {
     link.url = urlResult.url;
   }
 
+  // Hash before reserving the slug so a failure here cannot leave an orphaned reservation.
+  const passwordHash = visibility === 'password-protected' && password
+    ? await hashListPassword(password)
+    : null;
+  const passwordUpdatedAt = passwordHash ? Date.now() : null;
+
   // Reserve slug atomically
   const listId = generateListId();
   let reserved = false;
@@ -202,11 +208,6 @@ export async function POST(request: NextRequest) {
   }));
 
   // Write to database — clean up all artifacts if createList fails
-  const passwordHash = visibility === 'password-protected' && password
-    ? await hashListPassword(password)
-    : null;
-  const passwordUpdatedAt = passwordHash ? Date.now() : null;
-
   try {
     await createList({
       listId,

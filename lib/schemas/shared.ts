@@ -13,6 +13,11 @@ export const MAX_LIST_PASSWORD_LENGTH = 1024;
 
 export const ListVisibilitySchema = z.enum(['public', 'unlisted', 'password-protected']);
 
+export const UnlockListSchema = z.object({
+  slug: z.string().min(1),
+  password: z.string().min(1).max(MAX_LIST_PASSWORD_LENGTH),
+});
+
 // --- Sanitization ---
 
 /**

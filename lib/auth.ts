@@ -2,9 +2,11 @@ import { jwtVerify, SignJWT } from 'jose';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 
-const COOKIE_NAME = 'session';
+export const SESSION_COOKIE_NAME = 'session';
 export const LIST_ACCESS_MAX_AGE_SECONDS = 2 * 60 * 60;
 const LIST_ACCESS_COOKIE_PREFIX = 'list_access_';
+// Separates list unlock tokens from session tokens, which are signed with the same secret.
+const LIST_ACCESS_AUDIENCE = 'urlist:list-access';
 
 // Lazy-initialized secret — throws on first use if AUTH_SECRET is missing
 let _secret: Uint8Array | null = null;
@@ -71,7 +73,7 @@ export async function verifySessionToken(token: string): Promise<AuthResult> {
 }
 
 export async function verifyAuth(request: NextRequest): Promise<AuthResult> {
-  const cookieToken = request.cookies.get(COOKIE_NAME)?.value;
+  const cookieToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   const authHeader = request.headers.get('Authorization');
   const headerToken = authHeader?.match(/^Bearer\s+(.+)$/i)?.[1];
   const token = cookieToken || headerToken;
@@ -84,7 +86,7 @@ export async function verifyAuth(request: NextRequest): Promise<AuthResult> {
 }
 
 export async function getSessionUser(request: NextRequest): Promise<AuthUser | null> {
-  const token = request.cookies.get(COOKIE_NAME)?.value;
+  const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   if (!token) return null;
 
   try {
@@ -121,6 +123,7 @@ export async function createListAccessToken(params: {
     passwordUpdatedAt: params.passwordUpdatedAt,
   })
     .setProtectedHeader({ alg: 'HS256' })
+    .setAudience(LIST_ACCESS_AUDIENCE)
     .setIssuedAt()
     .setExpirationTime(`${LIST_ACCESS_MAX_AGE_SECONDS}s`)
     .sign(getSecret());
@@ -134,7 +137,7 @@ export async function verifyListAccessToken(
   if (!token) return false;
 
   try {
-    const { payload } = await jwtVerify(token, getSecret());
+    const { payload } = await jwtVerify(token, getSecret(), { audience: LIST_ACCESS_AUDIENCE });
     const parsed = ListAccessPayloadSchema.safeParse(payload);
     return parsed.success
       && parsed.data.listId === listId

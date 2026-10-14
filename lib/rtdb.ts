@@ -9,8 +9,12 @@ type PersistedListRecord = Omit<ListRecord, 'visibility' | 'hasPassword'> & {
   passwordUpdatedAt?: number | null;
 };
 
-export interface ListPasswordAccess {
-  visibility: ListVisibility;
+/**
+ * A list plus the private fields needed to enforce password protection.
+ * `list` is safe to return to clients; `passwordHash` must never leave the server.
+ */
+export interface ListAccessRecord {
+  list: ListRecord;
   passwordHash: string | null;
   passwordUpdatedAt: number;
 }
@@ -39,27 +43,28 @@ function omitLinkListId<T extends { listId: string }>(resource: T): Omit<T, 'lis
   return record as Omit<T, 'listId'>;
 }
 
-// Read a list by listId
-export async function getList(listId: string): Promise<ListRecord | null> {
+async function readListDocument(listId: string): Promise<PersistedListRecord | null> {
   const { resource } = await getDb()
     .container('lists')
     .item(listId, listId)
     .read<PersistedListRecord & { id: string }>();
-  if (!resource) return null;
-  return sanitizeListRecord(omitCosmosId(resource));
+  return resource ? omitCosmosId(resource) : null;
 }
 
-// Read only password access fields for a list.
-export async function getListPasswordAccess(listId: string): Promise<ListPasswordAccess | null> {
-  const { resource } = await getDb()
-    .container('lists')
-    .item(listId, listId)
-    .read<(PersistedListRecord & { id: string })>();
-  if (!resource) return null;
+// Read a list by listId
+export async function getList(listId: string): Promise<ListRecord | null> {
+  const record = await readListDocument(listId);
+  return record ? sanitizeListRecord(record) : null;
+}
+
+// Read a list and its password access fields with a single point read.
+export async function getListAccessRecord(listId: string): Promise<ListAccessRecord | null> {
+  const record = await readListDocument(listId);
+  if (!record) return null;
   return {
-    visibility: resource.visibility ?? 'public',
-    passwordHash: resource.passwordHash ?? null,
-    passwordUpdatedAt: resource.passwordUpdatedAt ?? 0,
+    list: sanitizeListRecord(record),
+    passwordHash: record.passwordHash ?? null,
+    passwordUpdatedAt: record.passwordUpdatedAt ?? 0,
   };
 }
 
@@ -80,15 +85,6 @@ export async function getLinks(listId: string): Promise<LinkWithId[]> {
 
   // Sort pinned-first in app layer to safely handle existing docs without the field
   return links.sort((a, b) => Number(b.pinned) - Number(a.pinned));
-}
-
-// Read a full list with links
-export async function getListWithLinks(listId: string): Promise<ListWithLinks | null> {
-  const list = await getList(listId);
-  if (!list) return null;
-
-  const links = await getLinks(listId);
-  return { listId, ...list, links };
 }
 
 // Resolve slug to listId

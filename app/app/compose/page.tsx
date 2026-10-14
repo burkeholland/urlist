@@ -10,6 +10,7 @@ import { PublishButton } from '@/components/publish-button';
 import { ListVisibilityFields } from '@/components/list-visibility-fields';
 import { useDraft } from '@/hooks/use-draft';
 import { useDebounce } from '@/hooks/use-debounce';
+import { useAuth } from '@/hooks/use-auth';
 import { validateSlugFormat } from '@/lib/slug';
 import type { DraftLink, SlugValidationStatus } from '@/lib/types';
 import { nanoid } from 'nanoid';
@@ -18,6 +19,8 @@ function ComposeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   // Auth is handled via httpOnly cookies automatically
+  const { user, loading: authLoading } = useAuth();
+  const signedOut = !authLoading && !user;
   const {
     slug,
     setSlug,
@@ -169,6 +172,7 @@ function ComposeContent() {
 
   const isPublishDisabled =
     links.length === 0 ||
+    (signedOut && visibility !== 'public') ||
     (visibility === 'password-protected' && password.length < 8) ||
     slugStatus === 'invalid' ||
     slugStatus === 'taken' ||
@@ -253,6 +257,7 @@ function ComposeContent() {
             onVisibilityChange={setVisibility}
             password={password}
             onPasswordChange={setPassword}
+            signedOut={signedOut}
           />
         </div>
       </div>
