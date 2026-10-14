@@ -9,17 +9,17 @@ vi.mock('@/lib/auth', () => ({
     constructor(code: string, msg: string) { super(msg); this.code = code; this.name = 'AuthError'; }
   },
 }));
-vi.mock('@/lib/rtdb', () => ({ getUserListIds: vi.fn() }));
+vi.mock('@/lib/rtdb', () => ({ getUserListMemberships: vi.fn() }));
 vi.mock('@/lib/analytics', () => ({ getGlobalAnalytics: vi.fn() }));
 
 import { GET } from '@/app/api/analytics/route';
 import { verifyAuth, requireAuth, AuthError } from '@/lib/auth';
-import { getUserListIds } from '@/lib/rtdb';
+import { getUserListMemberships } from '@/lib/rtdb';
 import { getGlobalAnalytics } from '@/lib/analytics';
 
 const mockVerifyAuth = verifyAuth as ReturnType<typeof vi.fn>;
 const mockRequireAuth = requireAuth as ReturnType<typeof vi.fn>;
-const mockGetUserListIds = getUserListIds as ReturnType<typeof vi.fn>;
+const mockGetUserListMemberships = getUserListMemberships as ReturnType<typeof vi.fn>;
 const mockGetGlobalAnalytics = getGlobalAnalytics as ReturnType<typeof vi.fn>;
 
 describe('GET /api/analytics', () => {
@@ -27,7 +27,10 @@ describe('GET /api/analytics', () => {
     vi.clearAllMocks();
     mockVerifyAuth.mockResolvedValue({ authenticated: true, uid: 'user1' });
     mockRequireAuth.mockImplementation(() => {});
-    mockGetUserListIds.mockResolvedValue(['l1', 'l2']);
+    mockGetUserListMemberships.mockResolvedValue([
+      { id: 'user1_l1', uid: 'user1', listId: 'l1', role: 'owner' },
+      { id: 'user1_l2', uid: 'user1', listId: 'l2', role: 'viewer' },
+    ]);
     mockGetGlobalAnalytics.mockResolvedValue({ totalViews: 10 });
   });
 
@@ -44,7 +47,7 @@ describe('GET /api/analytics', () => {
   it('returns global analytics for the user lists', async () => {
     const res = await GET(new NextRequest('http://localhost:3000/api/analytics'));
     expect(res.status).toBe(200);
-    expect(mockGetUserListIds).toHaveBeenCalledWith('user1');
+    expect(mockGetUserListMemberships).toHaveBeenCalledWith('user1');
     expect(mockGetGlobalAnalytics).toHaveBeenCalledWith(['l1', 'l2'], undefined, undefined);
     const body = await res.json();
     expect(body.totalViews).toBe(10);
@@ -57,7 +60,7 @@ describe('GET /api/analytics', () => {
   });
 
   it('rethrows non-auth errors', async () => {
-    mockGetUserListIds.mockRejectedValue(new Error('db down'));
+    mockGetUserListMemberships.mockRejectedValue(new Error('db down'));
     await expect(GET(new NextRequest('http://localhost:3000/api/analytics'))).rejects.toThrow('db down');
   });
 });

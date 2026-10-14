@@ -9,6 +9,8 @@ export async function GET(request: NextRequest) {
 
   const state = randomBytes(32).toString('hex');
   const redirectUri = new URL('/api/auth/callback', request.url).toString();
+  const returnTo = request.nextUrl.searchParams.get('returnTo');
+  const safeReturnTo = returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : null;
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -25,6 +27,15 @@ export async function GET(request: NextRequest) {
     maxAge: 600, // 10 minutes
     path: '/',
   });
+  if (safeReturnTo) {
+    response.cookies.set('oauth_return_to', safeReturnTo, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 600,
+      path: '/',
+    });
+  }
 
   return response;
 }

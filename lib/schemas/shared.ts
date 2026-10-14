@@ -8,6 +8,7 @@ export const MAX_DESCRIPTION_LENGTH = 280;
 export const MAX_OG_TITLE_LENGTH = 200;
 export const MAX_OG_DESCRIPTION_LENGTH = 500;
 export const MAX_OG_SITE_NAME_LENGTH = 100;
+export const MAX_INVITE_EXPIRY_DAYS = 30;
 
 // --- Sanitization ---
 
@@ -26,7 +27,6 @@ export function sanitizeText(value: unknown, maxLength: number): string | null {
     .replace(/&quot;/g, '"')
     .replace(/&#x27;/g, "'")
     .replace(/&#x2F;/g, '/')
-    // eslint-disable-next-line no-control-regex
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
     .trim()
     .slice(0, maxLength);
@@ -64,4 +64,19 @@ export const UpdateListSchema = z.object({
   description: z.string().optional(),
   updatedAt: z.number(),
   links: z.array(UpdateLinkSchema).max(MAX_LINKS).optional(),
+});
+
+export const InviteRoleSchema = z.enum(['editor', 'viewer']);
+
+export const CreateInviteSchema = z.object({
+  role: InviteRoleSchema.default('editor'),
+  expiresInDays: z.number().int().min(1).max(MAX_INVITE_EXPIRY_DAYS).optional().default(7),
+});
+
+export const AcceptInviteSchema = z.object({
+  token: z.string().min(32).max(256).regex(/^[A-Za-z0-9_-]+$/),
+});
+
+export const UpdateMemberSchema = z.object({
+  role: InviteRoleSchema,
 });

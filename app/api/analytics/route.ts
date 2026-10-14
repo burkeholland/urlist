@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth, requireAuth, AuthError } from '@/lib/auth';
-import { getUserListIds } from '@/lib/rtdb';
+import { getUserListMemberships } from '@/lib/rtdb';
 import { getGlobalAnalytics } from '@/lib/analytics';
 
 export async function GET(request: NextRequest) {
@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
     const authResult = await verifyAuth(request);
     requireAuth(authResult);
 
-    const listIds = await getUserListIds(authResult.uid!);
+    const listIds = (await getUserListMemberships(authResult.uid!)).map((membership) => membership.listId);
 
     const { searchParams } = new URL(request.url);
     const from = searchParams.get('from')

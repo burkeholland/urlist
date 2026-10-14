@@ -165,6 +165,14 @@ describe('getSessionUser', () => {
     expect(user!.name).toBe('Test User');
   });
 
+  it('returns user from valid bearer token', async () => {
+    const token = await createSessionToken(testUser);
+    const req = createRequest({ bearer: token });
+    const user = await getSessionUser(req);
+    expect(user?.uid).toBe('user123');
+    expect(user?.username).toBe('testuser');
+  });
+
   it('returns null with no cookie', async () => {
     const req = createRequest();
     const user = await getSessionUser(req);

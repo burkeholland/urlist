@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { GET } from '@/app/api/lists/route';
 import { verifyAuth } from '@/lib/auth';
-import { getUserListIds, getListsWithLinks } from '@/lib/rtdb';
+import { getUserListMemberships, getListsWithLinks } from '@/lib/rtdb';
 import { getListAnalyticsSummary } from '@/lib/analytics';
 
 vi.mock('@/lib/auth', () => ({ verifyAuth: vi.fn() }));
@@ -10,7 +10,7 @@ vi.mock('@/lib/rtdb', () => ({
   reserveSlug: vi.fn(),
   createList: vi.fn(),
   cleanupFailedPublish: vi.fn(),
-  getUserListIds: vi.fn(),
+  getUserListMemberships: vi.fn(),
   getListsWithLinks: vi.fn(),
 }));
 vi.mock('@/lib/analytics', () => ({ getListAnalyticsSummary: vi.fn() }));
@@ -23,7 +23,7 @@ describe('GET /api/lists', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(verifyAuth).mockResolvedValue({ authenticated: true, uid: 'u1' } as any);
-    vi.mocked(getUserListIds).mockResolvedValue(['list-1']);
+    vi.mocked(getUserListMemberships).mockResolvedValue([{ id: 'u1_list-1', uid: 'u1', listId: 'list-1', role: 'owner', createdAt: 1, updatedAt: 1 }]);
     vi.mocked(getListsWithLinks).mockResolvedValue([{ listId: 'list-1', slug: 's', description: '', ownerId: 'u1', createdAt: 1, updatedAt: 2, links: [] }]);
     vi.mocked(getListAnalyticsSummary).mockResolvedValue({ totalViews: 3, totalClicks: 4 } as any);
   });
@@ -54,7 +54,8 @@ describe('GET /api/lists', () => {
     const res = await json(await GET(new NextRequest('https://urlist.test/api/lists')));
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
-    expect(getUserListIds).toHaveBeenCalledWith('u1');
+    expect(getUserListMemberships).toHaveBeenCalledWith('u1');
+    expect(res.body[0].userRole).toBe('owner');
   });
 
   it('includes stats when includeStats=true', async () => {

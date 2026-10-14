@@ -6,6 +6,8 @@ export interface ListRecord {
   ownerId: string | null;
   createdAt: number;
   updatedAt: number;
+  createdBy?: string | null;
+  updatedBy?: string | null;
 }
 
 export interface LinkRecord {
@@ -17,6 +19,8 @@ export interface LinkRecord {
   ogImage: string | null;
   ogSiteName: string | null;
   createdAt: number;
+  createdBy?: string | null;
+  updatedBy?: string | null;
 }
 
 export interface LinkWithId extends LinkRecord {
@@ -30,8 +34,46 @@ export interface ListWithLinks {
   ownerId: string | null;
   createdAt: number;
   updatedAt: number;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+  userRole?: MembershipRole | null;
   links: LinkWithId[];
 }
+
+export type MembershipRole = 'owner' | 'editor' | 'viewer';
+export type InviteRole = Exclude<MembershipRole, 'owner'>;
+
+export interface ListMembership {
+  id: string;
+  uid: string;
+  listId: string;
+  role: MembershipRole;
+  createdAt: number;
+  updatedAt: number;
+  invitedBy?: string | null;
+  acceptedAt?: number | null;
+  username?: string | null;
+  name?: string | null;
+  avatar?: string | null;
+}
+
+export interface ListInvite {
+  id: string;
+  type: 'invite';
+  listId: string;
+  role: InviteRole;
+  tokenHash: string;
+  createdAt: number;
+  createdBy: string;
+  expiresAt: number;
+  revokedAt?: number | null;
+  revokedBy?: string | null;
+  acceptedAt?: number | null;
+  acceptedBy?: string | null;
+  rotatedFrom?: string | null;
+}
+
+export type SafeListInvite = Omit<ListInvite, 'tokenHash'>;
 
 export interface DraftLink {
   id: string;

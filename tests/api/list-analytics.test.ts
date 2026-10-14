@@ -11,6 +11,7 @@ vi.mock('@/lib/auth', () => ({
 }));
 vi.mock('@/lib/rtdb', () => ({
   getList: vi.fn(),
+  getListMembership: vi.fn(),
 }));
 vi.mock('@/lib/analytics', () => ({
   getListAnalytics: vi.fn(),
@@ -18,12 +19,13 @@ vi.mock('@/lib/analytics', () => ({
 
 import { GET } from '@/app/api/lists/[listId]/analytics/route';
 import { verifyAuth, requireAuth, AuthError } from '@/lib/auth';
-import { getList } from '@/lib/rtdb';
+import { getList, getListMembership } from '@/lib/rtdb';
 import { getListAnalytics } from '@/lib/analytics';
 
 const mockVerifyAuth = verifyAuth as ReturnType<typeof vi.fn>;
 const mockRequireAuth = requireAuth as ReturnType<typeof vi.fn>;
 const mockGetList = getList as ReturnType<typeof vi.fn>;
+const mockGetListMembership = getListMembership as ReturnType<typeof vi.fn>;
 const mockGetListAnalytics = getListAnalytics as ReturnType<typeof vi.fn>;
 
 const params = { params: Promise.resolve({ listId: 'list123' }) };
@@ -33,6 +35,7 @@ describe('GET /api/lists/[listId]/analytics', () => {
     vi.clearAllMocks();
     mockVerifyAuth.mockResolvedValue({ authenticated: true, uid: 'user1' });
     mockRequireAuth.mockImplementation(() => {});
+    mockGetListMembership.mockResolvedValue(null);
   });
 
   it('returns 401 when not authenticated', async () => {
@@ -57,7 +60,7 @@ describe('GET /api/lists/[listId]/analytics', () => {
     expect(body.error.message).toBe('No list exists with this ID.');
   });
 
-  it('returns 403 when user does not own the list', async () => {
+  it('returns 403 when user is not a collaborator', async () => {
     mockGetList.mockResolvedValue({ slug: 'test', ownerId: 'other-user', updatedAt: 1000 });
     mockVerifyAuth.mockResolvedValue({ authenticated: true, uid: 'user1' });
     const req = new NextRequest('http://localhost:3000/api/lists/list123/analytics');
@@ -65,7 +68,16 @@ describe('GET /api/lists/[listId]/analytics', () => {
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body.error.code).toBe('FORBIDDEN');
-    expect(body.error.message).toBe('You are not the owner of this list.');
+    expect(body.error.message).toBe('You do not have access to this list.');
+  });
+
+  it('returns analytics data for viewer collaborators', async () => {
+    mockGetList.mockResolvedValue({ slug: 'test', ownerId: 'owner', updatedAt: 1000 });
+    mockGetListMembership.mockResolvedValue({ uid: 'user1', listId: 'list123', role: 'viewer' });
+    mockGetListAnalytics.mockResolvedValue({ listId: 'list123', totalViews: 1, uniqueVisitors: 1, totalClicks: 0, clickThroughRate: 0, viewsOverTime: [], topReferrers: [], geoBreakdown: [], linkClicks: [] });
+    const req = new NextRequest('http://localhost:3000/api/lists/list123/analytics');
+    const res = await GET(req, params);
+    expect(res.status).toBe(200);
   });
 
   it('returns analytics data for owned list', async () => {
