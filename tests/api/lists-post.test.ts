@@ -129,7 +129,26 @@ describe('POST /api/lists', () => {
     const res = await json(await POST(req({ links: [{ url: 'example.com', position: 0 }] })));
     expect(res.status).toBe(201);
     expect(res.body.slug).toEqual(expect.any(String));
-    expect(createList).toHaveBeenCalledWith(expect.objectContaining({ ownerId: undefined }));
+    expect(createList).toHaveBeenCalledWith(expect.objectContaining({ ownerId: null, visibility: 'public' }));
+  });
+
+  it('requires authentication for unlisted publishes', async () => {
+    vi.mocked(verifyAuth).mockResolvedValue({ authenticated: false } as any);
+    const res = await json(await POST(req({ ...validBody, visibility: 'unlisted' })));
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('AUTH_REQUIRED_FOR_VISIBILITY');
+    expect(createList).not.toHaveBeenCalled();
+  });
+
+  it('hashes passwords and never passes plaintext to persistence', async () => {
+    const res = await json(await POST(req({ ...validBody, visibility: 'password-protected', password: 'super-secret' })));
+    expect(res.status).toBe(201);
+    expect(createList).toHaveBeenCalledWith(expect.objectContaining({
+      visibility: 'password-protected',
+      passwordHash: expect.stringMatching(/^scrypt\$/),
+      passwordUpdatedAt: expect.any(Number),
+    }));
+    expect(JSON.stringify(vi.mocked(createList).mock.calls[0][0])).not.toContain('super-secret');
   });
 
   it('returns 400 when description exceeds 280 characters', async () => {

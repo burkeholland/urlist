@@ -355,6 +355,16 @@ describe('getListAnalyticsSummary', () => {
     expect(result.totalViews).toBe(1);
     expect(result.totalClicks).toBe(0);
   });
+
+  it('falls back to zero when Cosmos returns no COUNT row', async () => {
+    const emptyDb = {
+      container: vi.fn(() => ({
+        items: { query: vi.fn(() => ({ fetchAll: vi.fn(async () => ({ resources: [] })) })) },
+      })),
+    };
+    vi.mocked(getDb).mockReturnValue(emptyDb as any);
+    await expect(getListAnalyticsSummary('s')).resolves.toEqual({ totalViews: 0, totalClicks: 0 });
+  });
 });
 
 describe('getGlobalAnalytics', () => {

@@ -1,9 +1,13 @@
 // Shared types for The Urlist
 
+export type ListVisibility = 'public' | 'unlisted' | 'password-protected';
+
 export interface ListRecord {
   slug: string;
   description: string;
   ownerId: string | null;
+  visibility?: ListVisibility;
+  hasPassword?: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -28,6 +32,8 @@ export interface ListWithLinks {
   slug: string;
   description: string;
   ownerId: string | null;
+  visibility?: ListVisibility;
+  hasPassword?: boolean;
   createdAt: number;
   updatedAt: number;
   links: LinkWithId[];
@@ -48,6 +54,7 @@ export interface DraftLink {
 export interface Draft {
   slug: string;
   description: string;
+  visibility: ListVisibility;
   links: DraftLink[];
   savedAt: number;
 }

@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { CreateListSchema, MAX_LINKS, UpdateListSchema, sanitizeText } from '@/lib/schemas/shared';
+import {
+  CreateListSchema,
+  MAX_LINKS,
+  MAX_LIST_PASSWORD_LENGTH,
+  MIN_LIST_PASSWORD_LENGTH,
+  UnlockListSchema,
+  UpdateListSchema,
+  sanitizeText,
+} from '@/lib/schemas/shared';
 
 const link = (overrides = {}) => ({
   url: 'https://example.com',
@@ -84,5 +92,67 @@ describe('UpdateListSchema', () => {
   it('allows update links to include an optional id field', () => {
     const result = UpdateListSchema.parse({ updatedAt: 1, links: [link({ id: 'link-1' })] });
     expect(result.links?.[0].id).toBe('link-1');
+  });
+});
+
+describe('list visibility and password schemas', () => {
+  const issuePaths = (result: { success: boolean; error?: { issues: { path: PropertyKey[] }[] } }) =>
+    result.error?.issues.map((issue) => issue.path.join('.'));
+
+  it('publishes new lists as public by default', () => {
+    const result = CreateListSchema.parse({ links: [link()] });
+    expect(result.visibility).toBe('public');
+    expect(result.password).toBeUndefined();
+  });
+
+  it('accepts password-protected lists that include a password', () => {
+    const result = CreateListSchema.parse({ visibility: 'password-protected', password: 'x'.repeat(MIN_LIST_PASSWORD_LENGTH), links: [link()] });
+    expect(result.visibility).toBe('password-protected');
+  });
+
+  it('requires a password for password-protected lists', () => {
+    const result = CreateListSchema.safeParse({ visibility: 'password-protected', links: [link()] });
+    expect(result.success).toBe(false);
+    expect(issuePaths(result)).toEqual(['password']);
+  });
+
+  it('rejects passwords on lists that are not password-protected', () => {
+    for (const visibility of ['public', 'unlisted']) {
+      const result = CreateListSchema.safeParse({ visibility, password: 'long-enough', links: [link()] });
+      expect(result.success).toBe(false);
+      expect(issuePaths(result)).toEqual(['password']);
+    }
+  });
+
+  it('enforces password length bounds', () => {
+    const create = (password: string) => CreateListSchema.safeParse({ visibility: 'password-protected', password, links: [link()] });
+    expect(create('x'.repeat(MIN_LIST_PASSWORD_LENGTH - 1)).success).toBe(false);
+    expect(create('x'.repeat(MAX_LIST_PASSWORD_LENGTH)).success).toBe(true);
+    expect(create('x'.repeat(MAX_LIST_PASSWORD_LENGTH + 1)).success).toBe(false);
+  });
+
+  it('rejects unknown visibility values', () => {
+    expect(CreateListSchema.safeParse({ visibility: 'private', links: [link()] }).success).toBe(false);
+    expect(UpdateListSchema.safeParse({ updatedAt: 1, visibility: 'private' }).success).toBe(false);
+  });
+
+  it('rejects an update that pairs a password with a visibility that cannot use it', () => {
+    const result = UpdateListSchema.safeParse({ updatedAt: 1, visibility: 'unlisted', password: 'long-enough' });
+    expect(result.success).toBe(false);
+    expect(issuePaths(result)).toEqual(['password']);
+  });
+
+  it('leaves a password-only update for the route to check against the stored visibility', () => {
+    expect(UpdateListSchema.parse({ updatedAt: 1, password: 'long-enough' }).password).toBe('long-enough');
+    expect(UpdateListSchema.parse({ updatedAt: 1, visibility: 'password-protected', password: 'long-enough' }).visibility)
+      .toBe('password-protected');
+  });
+
+  it('requires a slug and a bounded, non-empty password to unlock', () => {
+    expect(UnlockListSchema.safeParse({ slug: 'my-list', password: 'p' }).success).toBe(true);
+    expect(UnlockListSchema.safeParse({ slug: '', password: 'p' }).success).toBe(false);
+    expect(UnlockListSchema.safeParse({ slug: 'my-list', password: '' }).success).toBe(false);
+    expect(UnlockListSchema.safeParse({ slug: 'my-list', password: 'x'.repeat(MAX_LIST_PASSWORD_LENGTH + 1) }).success).toBe(false);
+    expect(UnlockListSchema.safeParse(null).success).toBe(false);
   });
 });

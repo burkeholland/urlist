@@ -185,7 +185,7 @@ export async function getListAnalyticsSummary(slug: string): Promise<ListAnalyti
 
   const { resources: pageViewCounts } = await db
     .container('analytics')
-    .items.query<{ $1: number }>({
+    .items.query<number>({
       query: "SELECT VALUE COUNT(1) FROM c WHERE c.slug = @slug AND c.type = 'pageView'",
       parameters: [{ name: '@slug', value: slug }],
     })
@@ -193,15 +193,15 @@ export async function getListAnalyticsSummary(slug: string): Promise<ListAnalyti
 
   const { resources: linkClickCounts } = await db
     .container('analytics')
-    .items.query<{ $1: number }>({
+    .items.query<number>({
       query: "SELECT VALUE COUNT(1) FROM c WHERE c.slug = @slug AND c.type = 'linkClick'",
       parameters: [{ name: '@slug', value: slug }],
     })
     .fetchAll();
 
   return {
-    totalViews: pageViewCounts[0],
-    totalClicks: linkClickCounts[0],
+    totalViews: pageViewCounts[0] ?? 0,
+    totalClicks: linkClickCounts[0] ?? 0,
   };
 }
 

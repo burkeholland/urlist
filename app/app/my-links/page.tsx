@@ -142,6 +142,9 @@ export default function MyLinksPage() {
                     <span className="slug-slash">/</span>
                     <span className="slug-name">{list.slug}</span>
                   </div>
+                  <span className={`visibility-badge visibility-${list.visibility}`}>
+                    {list.visibility === 'password-protected' ? 'Password' : list.visibility}
+                  </span>
                   {list.description && (
                     <p className="tile-desc">{list.description}</p>
                   )}
@@ -306,6 +309,24 @@ export default function MyLinksPage() {
         }
         .slug-name {
           color: var(--text);
+        }
+        .visibility-badge {
+          display: inline-flex;
+          width: fit-content;
+          border: 1px solid var(--border);
+          border-radius: 999px;
+          padding: 2px 7px;
+          font-size: 11px;
+          font-weight: 600;
+          text-transform: capitalize;
+          color: var(--text-muted);
+          background: var(--bg-secondary);
+        }
+        .visibility-unlisted,
+        .visibility-password-protected {
+          border-color: var(--accent);
+          color: var(--accent);
+          background: var(--blue-bg);
         }
         .tile-desc {
           font-size: 12px;

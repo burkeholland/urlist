@@ -1,17 +1,71 @@
 import { getDb } from './cosmos';
-import { ListRecord, LinkWithId, ListWithLinks } from './types';
+import { ListRecord, LinkWithId, ListVisibility, ListWithLinks } from './types';
 import { encodeSlugForKey, validateSlugFormat } from './slug';
 import { log } from './logger';
 
-// Read a list by listId
-export async function getList(listId: string): Promise<ListRecord | null> {
+type PersistedListRecord = Omit<ListRecord, 'visibility' | 'hasPassword'> & {
+  visibility?: ListVisibility;
+  passwordHash?: string | null;
+  passwordUpdatedAt?: number | null;
+};
+
+/**
+ * A list plus the private fields needed to enforce password protection.
+ * `list` is safe to return to clients; `passwordHash` must never leave the server.
+ */
+export interface ListAccessRecord {
+  list: ListRecord;
+  passwordHash: string | null;
+  passwordUpdatedAt: number;
+}
+
+function sanitizeListRecord(record: PersistedListRecord): ListRecord {
+  const { passwordHash, passwordUpdatedAt, ...safeRecord } = record;
+  void passwordHash;
+  void passwordUpdatedAt;
+  const visibility = safeRecord.visibility ?? 'public';
+  return {
+    ...safeRecord,
+    visibility,
+    hasPassword: visibility === 'password-protected' && !!record.passwordHash,
+  };
+}
+
+function omitCosmosId<T extends { id: string }>(resource: T): Omit<T, 'id'> {
+  const record: Partial<T> = { ...resource };
+  delete record.id;
+  return record as Omit<T, 'id'>;
+}
+
+function omitLinkListId<T extends { listId: string }>(resource: T): Omit<T, 'listId'> {
+  const record: Partial<T> = { ...resource };
+  delete record.listId;
+  return record as Omit<T, 'listId'>;
+}
+
+async function readListDocument(listId: string): Promise<PersistedListRecord | null> {
   const { resource } = await getDb()
     .container('lists')
     .item(listId, listId)
-    .read<ListRecord & { id: string }>();
-  if (!resource) return null;
-  const { id: _, ...record } = resource;
-  return record as ListRecord;
+    .read<PersistedListRecord & { id: string }>();
+  return resource ? omitCosmosId(resource) : null;
+}
+
+// Read a list by listId
+export async function getList(listId: string): Promise<ListRecord | null> {
+  const record = await readListDocument(listId);
+  return record ? sanitizeListRecord(record) : null;
+}
+
+// Read a list and its password access fields with a single point read.
+export async function getListAccessRecord(listId: string): Promise<ListAccessRecord | null> {
+  const record = await readListDocument(listId);
+  if (!record) return null;
+  return {
+    list: sanitizeListRecord(record),
+    passwordHash: record.passwordHash ?? null,
+    passwordUpdatedAt: record.passwordUpdatedAt ?? 0,
+  };
 }
 
 // Read links for a list, sorted pinned-first then by position
@@ -24,22 +78,13 @@ export async function getLinks(listId: string): Promise<LinkWithId[]> {
     })
     .fetchAll();
 
-  const links = resources.map(({ listId: _listId, ...link }) => ({
-    ...link,
-    pinned: link.pinned ?? false,
+  const links = resources.map((resource) => ({
+    ...omitLinkListId(resource),
+    pinned: resource.pinned ?? false,
   }) as LinkWithId);
 
   // Sort pinned-first in app layer to safely handle existing docs without the field
   return links.sort((a, b) => Number(b.pinned) - Number(a.pinned));
-}
-
-// Read a full list with links
-export async function getListWithLinks(listId: string): Promise<ListWithLinks | null> {
-  const list = await getList(listId);
-  if (!list) return null;
-
-  const links = await getLinks(listId);
-  return { listId, ...list, links };
 }
 
 // Resolve slug to listId
@@ -128,9 +173,12 @@ export async function createList(params: {
   slug: string;
   description: string;
   ownerId: string | null;
+  visibility?: ListVisibility;
+  passwordHash?: string | null;
+  passwordUpdatedAt?: number | null;
   links: { id: string; url: string; position: number; pinned: boolean; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null }[];
 }): Promise<void> {
-  const { listId, slug, description, ownerId, links } = params;
+  const { listId, slug, description, ownerId, visibility = 'public', passwordHash = null, passwordUpdatedAt = null, links } = params;
   const now = Date.now();
   const db = getDb();
 
@@ -139,6 +187,9 @@ export async function createList(params: {
     slug,
     description,
     ownerId,
+    visibility,
+    passwordHash,
+    passwordUpdatedAt,
     createdAt: now,
     updatedAt: now,
   });
@@ -174,9 +225,12 @@ export async function createList(params: {
 export async function updateList(params: {
   listId: string;
   description?: string;
+  visibility?: ListVisibility;
+  passwordHash?: string | null;
+  passwordUpdatedAt?: number | null;
   links?: { id: string; url: string; position: number; pinned: boolean; ogTitle: string | null; ogDescription: string | null; ogImage: string | null; ogSiteName: string | null }[];
 }): Promise<number> {
-  const { listId, description, links } = params;
+  const { listId, description, visibility, passwordHash, passwordUpdatedAt, links } = params;
   const now = Date.now();
   const db = getDb();
 
@@ -185,6 +239,9 @@ export async function updateList(params: {
   ];
   /* v8 ignore start -- V8 AST quirk: both runtime outcomes are asserted in tests, but the implicit else is unreachable to the coverage probe */
   if (description !== undefined) patchOps.push({ op: 'set', path: '/description', value: description });
+  if (visibility !== undefined) patchOps.push({ op: 'set', path: '/visibility', value: visibility });
+  if (passwordHash !== undefined) patchOps.push({ op: 'set', path: '/passwordHash', value: passwordHash });
+  if (passwordUpdatedAt !== undefined) patchOps.push({ op: 'set', path: '/passwordUpdatedAt', value: passwordUpdatedAt });
   await db.container('lists').item(listId, listId).patch(patchOps);
 
   if (links !== undefined) {
@@ -284,7 +341,7 @@ export async function getListsWithLinks(listIds: string[]): Promise<ListWithLink
 
   // Single query for all lists
   const { resources: lists } = await db.container('lists').items
-    .query<ListRecord & { id: string }>({
+    .query<PersistedListRecord & { id: string }>({
       query: `SELECT * FROM c WHERE c.id IN (${listIds.map((_, i) => `@id${i}`).join(',')})`,
       parameters: listIds.map((id, i) => ({ name: `@id${i}`, value: id })),
     })
@@ -310,7 +367,7 @@ export async function getListsWithLinks(listIds: string[]): Promise<ListWithLink
     const { id, ...record } = list;
     return {
       listId: id,
-      ...record,
+      ...sanitizeListRecord(record),
       links: linksByListId.get(id) ?? [],
     } as ListWithLinks;
   });

@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useState, useCallback, use } from 'react';
+import { useEffect, useState, useCallback, useRef, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { NavHeader } from '@/components/nav-header';
 import { UrlInput } from '@/components/url-input';
 import { SortableLinkList } from '@/components/sortable-link-list';
+import { ListVisibilityFields } from '@/components/list-visibility-fields';
 import { useDraft } from '@/hooks/use-draft';
 import { useAuth } from '@/hooks/use-auth';
-import type { DraftLink, ListWithLinks } from '@/lib/types';
+import type { DraftLink, ListVisibility, ListWithLinks } from '@/lib/types';
 import { nanoid } from 'nanoid';
 
 interface EditPageProps {
@@ -24,6 +25,11 @@ export default function EditComposePage({ params }: EditPageProps) {
   const [fetching, setFetching] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [visibility, setVisibility] = useState<ListVisibility>('public');
+  const [password, setPassword] = useState('');
+  // The list is refetched whenever links change, so only seed visibility once;
+  // otherwise an unsaved switch to "Password" would silently revert before saving.
+  const visibilitySeeded = useRef(false);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -43,6 +49,10 @@ export default function EditComposePage({ params }: EditPageProps) {
         }
         const data: ListWithLinks = await res.json();
         setListData(data);
+        if (!visibilitySeeded.current) {
+          visibilitySeeded.current = true;
+          setVisibility(data.visibility ?? 'public');
+        }
 
         // Only populate draft if draft is empty (not previously saved)
         if (loaded && links.length === 0) {
@@ -133,6 +143,8 @@ export default function EditComposePage({ params }: EditPageProps) {
         },
         body: JSON.stringify({
           description,
+          visibility,
+          password: visibility === 'password-protected' && password ? password : undefined,
           updatedAt: listData.updatedAt,
           links: links.map((l, i) => ({
             id: l.id,
@@ -161,6 +173,11 @@ export default function EditComposePage({ params }: EditPageProps) {
       setSaving(false);
     }
   };
+
+  // A new password must meet the minimum; leaving it blank keeps the current one, if there is one.
+  const passwordInvalid = visibility === 'password-protected'
+    && (password ? password.length < 8 : !listData?.hasPassword);
+  const saveDisabled = links.length === 0 || saving || passwordInvalid;
 
   if (authLoading || fetching || !loaded) {
     return (
@@ -268,6 +285,14 @@ export default function EditComposePage({ params }: EditPageProps) {
             />
             <p className="char-count">{description.length}/280</p>
           </div>
+          <ListVisibilityFields
+            visibility={visibility}
+            onVisibilityChange={setVisibility}
+            password={password}
+            onPasswordChange={setPassword}
+            passwordPlaceholder={listData?.hasPassword ? 'Leave blank to keep current password' : 'At least 8 characters'}
+            passwordHelp={listData?.hasPassword ? 'Leave blank to keep the current password, or enter a new one to rotate access.' : 'Passwords are hashed before storage and are never shown again.'}
+          />
         </div>
 
         <div className="field-group">
@@ -289,9 +314,9 @@ export default function EditComposePage({ params }: EditPageProps) {
         <div className="compose-actions">
           <button
             onClick={handleSave}
-            disabled={links.length === 0 || saving}
+            disabled={saveDisabled}
             className="btn btn-primary"
-            style={links.length === 0 || saving ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+            style={saveDisabled ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
           >
             {saving ? 'Saving…' : 'Save'}
           </button>

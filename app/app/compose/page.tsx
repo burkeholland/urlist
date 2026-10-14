@@ -7,8 +7,10 @@ import { SlugInput } from '@/components/slug-input';
 import { UrlInput } from '@/components/url-input';
 import { SortableLinkList } from '@/components/sortable-link-list';
 import { PublishButton } from '@/components/publish-button';
+import { ListVisibilityFields } from '@/components/list-visibility-fields';
 import { useDraft } from '@/hooks/use-draft';
 import { useDebounce } from '@/hooks/use-debounce';
+import { useAuth } from '@/hooks/use-auth';
 import { validateSlugFormat } from '@/lib/slug';
 import type { DraftLink, SlugValidationStatus } from '@/lib/types';
 import { nanoid } from 'nanoid';
@@ -17,11 +19,15 @@ function ComposeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   // Auth is handled via httpOnly cookies automatically
+  const { user, loading: authLoading } = useAuth();
+  const signedOut = !authLoading && !user;
   const {
     slug,
     setSlug,
     description,
     setDescription,
+    visibility,
+    setVisibility,
     links,
     loaded,
     addLink,
@@ -34,6 +40,7 @@ function ComposeContent() {
 
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [password, setPassword] = useState('');
   const [slugApiResult, setSlugApiResult] = useState<{ available: boolean; slug: string } | null>(null);
   const [initialUrlProcessed, setInitialUrlProcessed] = useState(false);
   const debouncedSlug = useDebounce(slug, 400);
@@ -134,6 +141,8 @@ function ComposeContent() {
         body: JSON.stringify({
           slug: slug || undefined,
           description,
+          visibility,
+          password: visibility === 'password-protected' ? password : undefined,
           links: links.map((l, i) => ({
             url: l.url,
             position: i,
@@ -163,6 +172,8 @@ function ComposeContent() {
 
   const isPublishDisabled =
     links.length === 0 ||
+    (signedOut && visibility !== 'public') ||
+    (visibility === 'password-protected' && password.length < 8) ||
     slugStatus === 'invalid' ||
     slugStatus === 'taken' ||
     slugStatus === 'checking';
@@ -241,6 +252,13 @@ function ComposeContent() {
               </div>
             </div>
           </div>
+          <ListVisibilityFields
+            visibility={visibility}
+            onVisibilityChange={setVisibility}
+            password={password}
+            onPasswordChange={setPassword}
+            signedOut={signedOut}
+          />
         </div>
       </div>
 
