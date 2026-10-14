@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { recordPageView, recordLinkClick, hashVisitorId } from '@/lib/analytics';
 import { getList } from '@/lib/rtdb';
 import { getClientIp, checkRateLimit, RATE_LIMITS } from '@/lib/rate-limiter';
+import { isAnalyticsSurface } from '@/lib/embed';
 import { log } from '@/lib/logger';
 import type { TrackEventPayload } from '@/lib/types';
 
@@ -56,6 +57,13 @@ export async function POST(
     );
   }
 
+  if (body.surface !== undefined && !isAnalyticsSurface(body.surface)) {
+    return NextResponse.json(
+      { error: { code: 'INVALID_REQUEST', message: 'surface must be "page" or "embed".' } },
+      { status: 400 },
+    );
+  }
+
   const userAgent = request.headers.get('user-agent') || '';
   const visitorId = await hashVisitorId(ip, userAgent);
   const country = request.headers.get('cf-ipcountry') || null;
@@ -65,6 +73,7 @@ export async function POST(
       await recordPageView({
         slug: list.slug,
         visitorId,
+        surface: body.surface ?? 'page',
         referrer: body.referrer ?? null,
         utmSource: body.utmSource ?? null,
         utmMedium: body.utmMedium ?? null,
@@ -76,6 +85,7 @@ export async function POST(
         slug: list.slug,
         linkId: body.linkId,
         visitorId,
+        surface: body.surface ?? 'page',
         referrer: body.referrer ?? null,
       });
     }

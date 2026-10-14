@@ -65,11 +65,14 @@ export type SlugValidationStatus = 'idle' | 'checking' | 'valid' | 'invalid' | '
 // ── Analytics types ──
 
 export type AnalyticsEventType = 'pageView' | 'linkClick';
+export type AnalyticsSurface = 'page' | 'embed';
 
 export interface AnalyticsEvent {
   id: string;
   slug: string;
   type: AnalyticsEventType;
+  /** Missing on events recorded before embeds existed; treat those as direct page traffic. */
+  surface?: AnalyticsSurface;
   visitorId: string;
   referrer: string | null;
   timestamp: number;
@@ -111,6 +114,12 @@ export interface ListAnalytics {
   uniqueVisitors: number;
   totalClicks: number;
   clickThroughRate: number;
+  surfaceBreakdown: {
+    pageViews: number;
+    embedViews: number;
+    pageClicks: number;
+    embedClicks: number;
+  };
   viewsOverTime: DailyViews[];
   topReferrers: ReferrerStats[];
   geoBreakdown: GeoStats[];
@@ -141,6 +150,7 @@ export interface GlobalAnalytics {
 
 export interface TrackPageViewPayload {
   type: 'pageView';
+  surface?: AnalyticsSurface;
   referrer?: string;
   utmSource?: string;
   utmMedium?: string;
@@ -150,6 +160,7 @@ export interface TrackPageViewPayload {
 export interface TrackLinkClickPayload {
   type: 'linkClick';
   linkId: string;
+  surface?: AnalyticsSurface;
   referrer?: string;
 }
 

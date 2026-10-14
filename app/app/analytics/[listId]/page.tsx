@@ -105,6 +105,9 @@ export default function AnalyticsPage() {
               <div className="stat-card">
                 <div className="stat-value">{formatNumber(data.totalViews)}</div>
                 <div className="stat-label">Total Views</div>
+                <div className="stat-subtle">
+                  {formatNumber(data.surfaceBreakdown.pageViews)} direct · {formatNumber(data.surfaceBreakdown.embedViews)} embed
+                </div>
               </div>
               <div className="stat-card">
                 <div className="stat-value">{formatNumber(data.uniqueVisitors)}</div>
@@ -113,6 +116,9 @@ export default function AnalyticsPage() {
               <div className="stat-card">
                 <div className="stat-value">{formatNumber(data.totalClicks)}</div>
                 <div className="stat-label">Link Clicks</div>
+                <div className="stat-subtle">
+                  {formatNumber(data.surfaceBreakdown.pageClicks)} direct · {formatNumber(data.surfaceBreakdown.embedClicks)} embed
+                </div>
               </div>
               <div className="stat-card">
                 <div className="stat-value">{(data.clickThroughRate * 100).toFixed(1)}%</div>
@@ -278,6 +284,11 @@ export default function AnalyticsPage() {
           font-size: 13px;
           color: var(--text-muted);
           margin-top: 4px;
+        }
+        .stat-subtle {
+          font-size: 12px;
+          color: var(--text-muted);
+          margin-top: 6px;
         }
         .chart-section {
           margin-bottom: 24px;

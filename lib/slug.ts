@@ -2,7 +2,7 @@ import { nanoid } from 'nanoid';
 
 const SLUG_REGEX = /^[a-z0-9]([a-z0-9\-_\/]*[a-z0-9])?$/;
 const CONSECUTIVE_SLASH_REGEX = /\/{2,}/;
-const RESERVED_PREFIXES = ['app', 'api', '_next'];
+export const RESERVED_PREFIXES = ['app', 'api', '_next'];
 
 export function validateSlugFormat(slug: string): {
   valid: boolean;
