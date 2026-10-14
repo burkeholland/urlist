@@ -95,7 +95,7 @@ export function NavHeader() {
 
   return (
     <>
-      <header className="w-full border-b border-[var(--surface-border)]" style={{ background: 'var(--surface)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}>
+      <header className="w-full border-b border-[var(--surface-border)]" style={{ position: 'relative', zIndex: 10, background: 'var(--surface)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}>
         <nav className="mx-auto flex h-12 w-full max-w-[860px] items-center justify-between px-4">
           <div className="flex items-center gap-5">
             <Link
