@@ -8,11 +8,13 @@ import {
   getFirstSearchParam,
   getPublicRenderOptions,
   isAnalyticsSurface,
+  isPublicListPath,
   parseEmbedTheme,
   PUBLIC_LIST_VIEW_MODES,
   shouldBootstrapAuth,
   shouldTrackEmbedAnalytics,
 } from '@/lib/embed';
+import { RESERVED_PREFIXES } from '@/lib/slug';
 
 describe('parseEmbedTheme', () => {
   it('accepts supported themes', () => {
@@ -51,14 +53,62 @@ describe('getPublicRenderOptions', () => {
   });
 });
 
-describe('shouldBootstrapAuth', () => {
-  it('skips auth bootstrap for embed pages', () => {
-    expect(shouldBootstrapAuth('?embed=1')).toBe(false);
+describe('isPublicListPath', () => {
+  it.each(['/my-list', '/nested/list', '/apiary', '/application', '//my-list'])(
+    'treats %s as a public list',
+    (path) => {
+      expect(isPublicListPath(path)).toBe(true);
+    },
+  );
+
+  it.each([
+    '/',
+    '',
+    '/app',
+    '/app/',
+    '/app/my-links',
+    '/app/analytics/abc',
+    '/app/compose/abc',
+    '/api/auth/me',
+    '/_next/static/x.js',
+    '/%61pp/my-links',
+    '/%61pi/lists',
+    '/%E0%A4%A',
+  ])('does not treat %s as a public list', (path) => {
+    expect(isPublicListPath(path)).toBe(false);
   });
 
-  it('keeps auth bootstrap for regular pages', () => {
-    expect(shouldBootstrapAuth('')).toBe(true);
-    expect(shouldBootstrapAuth('?theme=dark')).toBe(true);
+  it('covers every reserved prefix', () => {
+    for (const prefix of RESERVED_PREFIXES) {
+      expect(isPublicListPath(`/${prefix}`)).toBe(false);
+      expect(isPublicListPath(`/${prefix}/anything`)).toBe(false);
+    }
+  });
+});
+
+describe('shouldBootstrapAuth', () => {
+  it('skips auth bootstrap only for embeds of public lists', () => {
+    expect(shouldBootstrapAuth('/my-list', '?embed=1')).toBe(false);
+    expect(shouldBootstrapAuth('/nested/list', '?theme=dark&embed=1')).toBe(false);
+  });
+
+  it('keeps auth bootstrap for regular public list pages', () => {
+    expect(shouldBootstrapAuth('/my-list', '')).toBe(true);
+    expect(shouldBootstrapAuth('/my-list', '?theme=dark')).toBe(true);
+    expect(shouldBootstrapAuth('/my-list', '?embed=0')).toBe(true);
+  });
+
+  it.each([
+    '/app/my-links',
+    '/app/analytics',
+    '/app/analytics/abc',
+    '/app/compose',
+    '/app/compose/abc',
+    '/api/auth/me',
+    '/%61pp/my-links',
+    '/',
+  ])('still bootstraps auth on %s even with ?embed=1', (path) => {
+    expect(shouldBootstrapAuth(path, '?embed=1')).toBe(true);
   });
 });
 

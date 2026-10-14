@@ -24,7 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!shouldBootstrapAuth(window.location.search)) {
+    if (!shouldBootstrapAuth(window.location.pathname, window.location.search)) {
       const frame = window.requestAnimationFrame(() => setLoading(false));
       return () => window.cancelAnimationFrame(frame);
     }

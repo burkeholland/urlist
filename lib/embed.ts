@@ -1,4 +1,5 @@
 import type { AnalyticsSurface } from '@/lib/types';
+import { RESERVED_PREFIXES } from '@/lib/slug';
 
 export const EMBED_QUERY_VALUE = '1';
 export const EMBED_RESIZE_MESSAGE_TYPE = 'urlist:embed:resize';
@@ -34,8 +35,27 @@ export function getPublicRenderOptions(searchParams: {
   };
 }
 
-export function shouldBootstrapAuth(search: string): boolean {
-  return new URLSearchParams(search).get('embed') !== EMBED_QUERY_VALUE;
+/**
+ * True for paths served by the public list page (`/{slug}`), false for the home page and the
+ * reserved app, api and _next prefixes. The match is on the decoded path so an encoded prefix
+ * such as `/%61pp` cannot masquerade as a public list.
+ */
+export function isPublicListPath(pathname: string): boolean {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return false;
+  }
+
+  const firstSegment = decoded.split('/').find((segment) => segment !== '');
+  return firstSegment !== undefined && !RESERVED_PREFIXES.includes(firstSegment);
+}
+
+/** Auth is skipped only for confirmed embeds: a public list path requested with ?embed=1. */
+export function shouldBootstrapAuth(pathname: string, search: string): boolean {
+  const isEmbedRequest = new URLSearchParams(search).get('embed') === EMBED_QUERY_VALUE;
+  return !(isEmbedRequest && isPublicListPath(pathname));
 }
 
 export function shouldTrackEmbedAnalytics(options: PublicRenderOptions): boolean {

@@ -42,7 +42,7 @@ const nextConfig: NextConfig = {
     return [
       { source: '/:path*', missing: [EMBED_REQUEST], headers: SAME_ORIGIN_FRAME_HEADERS },
       { source: '/', headers: SAME_ORIGIN_FRAME_HEADERS },
-      { source: '/:first(app|api)/:rest*', headers: SAME_ORIGIN_FRAME_HEADERS },
+      { source: '/:first(app|api|_next)/:rest*', headers: SAME_ORIGIN_FRAME_HEADERS },
       {
         source: EMBEDDABLE_PATH,
         has: [EMBED_REQUEST],

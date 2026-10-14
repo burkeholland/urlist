@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { pathToRegexp } from 'next/dist/compiled/path-to-regexp';
 import nextConfig from '@/next.config';
+import { RESERVED_PREFIXES } from '@/lib/slug';
 
 type HeaderRule = {
   source: string;
@@ -54,6 +55,15 @@ describe('embed frame policy', () => {
       expect(headers['X-Frame-Options']).toBe('SAMEORIGIN');
     },
   );
+
+  it('keeps every reserved slug prefix unframeable, so the policy cannot drift from lib/slug.ts', async () => {
+    for (const prefix of RESERVED_PREFIXES) {
+      for (const path of [`/${prefix}`, `/${prefix}/anything/else`]) {
+        const headers = await headersFor(path, { embed: '1' });
+        expect(headers['Content-Security-Policy'], path).toBe("frame-ancestors 'self'");
+      }
+    }
+  });
 
   it('does not treat other embed values as embeds', async () => {
     const headers = await headersFor('/my-list', { embed: '0' });
